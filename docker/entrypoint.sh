@@ -78,6 +78,7 @@ playlists = ${BALLOT_PLAYLISTS:-}
 pin = ${BALLOT_PIN}
 admin_pin = ${BALLOT_ADMIN_PIN:-}
 public_url = ${BALLOT_PUBLIC_URL:-}
+trusted_proxies = ${BALLOT_TRUSTED_PROXIES:-}
 test_mode = ${BALLOT_TEST_MODE:-false}
 carry_over = ${BALLOT_CARRY_OVER:-true}
 lock_before_end = ${BALLOT_LOCK_BEFORE_END:-20}

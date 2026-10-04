@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import pathlib
@@ -169,6 +170,37 @@ class BaseHandler(tornado.web.RequestHandler):
         self.finish(json.dumps(data))
 
 
+def _in_networks(
+    ip: str, networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network]
+) -> bool:
+    try:
+        address = ipaddress.ip_address(ip.strip())
+    except ValueError:
+        return False
+    return any(address in net for net in networks)
+
+
+def client_ip(
+    remote_ip: str, forwarded_for: str | None, trusted_proxies: list[str]
+) -> str:
+    """The guest's IP. Behind trusted proxies, take the right-most address in
+    X-Forwarded-For that isn't a proxy: entries further left can be forged by
+    the client, but each trusted proxy appends the peer it saw."""
+    networks = []
+    for entry in trusted_proxies:
+        try:
+            networks.append(ipaddress.ip_network(entry.strip(), strict=False))
+        except ValueError:
+            logger.warning("Ignoring invalid trusted proxy %r", entry)
+    if not networks or not _in_networks(remote_ip, networks) or not forwarded_for:
+        return remote_ip
+    for hop in reversed(forwarded_for.split(",")):
+        hop = hop.strip()
+        if hop and not _in_networks(hop, networks):
+            return hop
+    return remote_ip
+
+
 class FailedJoins:
     """Wrong-PIN attempts per IP over the last minute."""
 
@@ -192,7 +224,11 @@ class JoinHandler(BaseHandler):
         self.failed = failed
 
     def post(self) -> None:
-        ip = self.request.remote_ip or ""
+        ip = client_ip(
+            self.request.remote_ip or "",
+            self.request.headers.get("X-Forwarded-For"),
+            self.party_settings.trusted_proxies,
+        )
         if self.failed.blocked(ip):
             return self.write_json({"error": "Too many attempts, wait a minute"}, 429)
         try:

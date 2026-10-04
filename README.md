@@ -128,6 +128,7 @@ commented volume in `compose.yaml`.
 | `max_suggestions_per_user` | `1` | Searched songs each guest may add per round |
 | `search_schemes` | | URI schemes searched for suggestions; empty = every enabled backend |
 | `public_url` | | Join URL shown as a QR code |
+| `trusted_proxies` | | Reverse proxy IPs/CIDRs whose `X-Forwarded-For` is trusted (for per-guest PIN rate limiting) |
 | `test_mode` | `false` | Play `test_play_seconds`, lock at `test_lock_at` |
 | `test_play_seconds` | `30` | |
 | `test_lock_at` | `15` | |

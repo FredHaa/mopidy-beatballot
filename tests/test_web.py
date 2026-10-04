@@ -7,7 +7,7 @@ from tornado.testing import AsyncHTTPTestCase, gen_test
 from mopidy_beatballot.hub import Hub
 from mopidy_beatballot.settings import Settings
 from mopidy_beatballot.voting import VoteError
-from mopidy_beatballot.web import Auth, routes
+from mopidy_beatballot.web import Auth, client_ip, routes
 
 from .helpers import track
 
@@ -161,3 +161,19 @@ def test_make_app_builds_routes(tmp_path, monkeypatch):
     monkeypatch.setattr(tidal_auth, "ACTIVE", Pending())
     assert api.player.login_pending("tidal")
     assert not api.player.login_pending("spotify")
+
+
+def test_client_ip_without_trusted_proxies_ignores_header():
+    assert client_ip("10.0.0.5", "6.6.6.6", []) == "10.0.0.5"
+
+
+def test_client_ip_behind_traefik_and_cloudflare():
+    trusted = ["192.168.10.254", "173.245.48.0/20"]
+    # Forged left-most entry, real client, then the Cloudflare edge Traefik saw.
+    xff = "1.2.3.4, 85.0.0.7, 173.245.48.9"
+    assert client_ip("192.168.10.254", xff, trusted) == "85.0.0.7"
+    # Direct to Traefik (no Cloudflare).
+    assert client_ip("192.168.10.254", "85.0.0.7", trusted) == "85.0.0.7"
+    # Not from a trusted proxy: header is ignored.
+    assert client_ip("85.0.0.9", "1.2.3.4", trusted) == "85.0.0.9"
+    assert client_ip("192.168.10.254", None, trusted) == "192.168.10.254"

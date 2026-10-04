@@ -20,6 +20,8 @@ class Settings:
     # Mopidy URI schemes searched for suggestions; empty searches every backend.
     search_schemes: list[str] = field(default_factory=list)
     public_url: str = ""
+    # Reverse proxies (IPs or CIDRs) whose X-Forwarded-For is trusted.
+    trusted_proxies: list[str] = field(default_factory=list)
     test_mode: bool = False
     test_play_seconds: int = 30
     test_lock_at: int = 15
@@ -34,6 +36,7 @@ class Settings:
             normalize_playlist(p) for p in split_list(settings.playlists)
         ]
         settings.search_schemes = split_list(settings.search_schemes)
+        settings.trusted_proxies = split_list(settings.trusted_proxies)
         return settings
 
     def play_limit_ms(self) -> int | None:

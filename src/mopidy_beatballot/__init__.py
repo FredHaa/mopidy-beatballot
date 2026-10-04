@@ -34,6 +34,7 @@ class Extension(ext.Extension):
         schema["max_suggestions_per_user"] = config.Integer(minimum=0)
         schema["search_schemes"] = config.List(optional=True)
         schema["public_url"] = config.String(optional=True)
+        schema["trusted_proxies"] = config.List(optional=True)
         schema["test_mode"] = config.Boolean()
         schema["test_play_seconds"] = config.Integer(minimum=5)
         schema["test_lock_at"] = config.Integer(minimum=1)
