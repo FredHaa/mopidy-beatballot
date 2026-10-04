@@ -12,7 +12,7 @@
   --good: #3ddc97;
   --warn: #ffcc3d;
   --gradient: linear-gradient(120deg, var(--accent) 0%, var(--accent-2) 100%);
-  --radius: 18px;
+  --radius: 1.125rem;
   --shadow: 0 10px 30px rgb(0 0 0 / 0.35);
   color-scheme: dark;
 }
@@ -134,4 +134,18 @@ input {
   letter-spacing: 0.02em;
   background: rgb(255 255 255 / 0.08);
   color: var(--muted);
+}
+
+/* Big-screen view: size everything from the viewport so it fills any screen,
+   landscape or portrait, at any browser zoom. --host-scale is the A-/A+ control. */
+html.host-view {
+  font-size: calc(clamp(8px, min(1.1vw, 1.95vh), 72px) * var(--host-scale, 1));
+}
+@media (orientation: portrait) {
+  html.host-view {
+    font-size: calc(clamp(8px, min(2.2vw, 1.25vh), 72px) * var(--host-scale, 1));
+  }
+}
+html.host-view body {
+  overflow: hidden;
 }

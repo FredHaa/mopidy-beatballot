@@ -26,34 +26,40 @@
   {#if !s}
     <div class="loading muted">Connecting to the party…</div>
   {:else}
-    <NowPlaying />
-    <div class="panel"><LockStatus /></div>
+    <div class="area now"><NowPlaying /></div>
+    <div class="area status panel"><LockStatus /></div>
 
-    <div class="section-head">
-      <h2>Pick the next song</h2>
-      <span class="muted">Round {s.round.id}</span>
-    </div>
-    <p class="muted tip">
-      {#if s.suggestions_only}Guests add the songs.{/if}
-      Tap a song to vote. Tap again to take it back.
-      {#if s.settings.carry_over}Songs with {s.settings.carry_min_votes}+ votes that lose stay in the next round.{/if}
-    </p>
-    <Candidates />
+    <section class="area ballot">
+      <div class="section-head">
+        <h2>Pick the next song</h2>
+        <span class="muted">Round {s.round.id}</span>
+      </div>
+      <p class="muted tip">
+        {#if s.suggestions_only}Guests add the songs.{/if}
+        Tap a song to vote. Tap again to take it back.
+        {#if s.settings.carry_over}Songs with {s.settings.carry_min_votes}+ votes that lose stay in the next round.{/if}
+      </p>
+      <Candidates />
+    </section>
 
     {#if s.history.length}
-      <h2 class="section-head">Recently played</h2>
-      <div class="history">
-        {#each s.history as track, i (track.uri + i)}
-          <div class="past">
-            <Art {track} size={40} />
-            <div class="truncate"><div class="truncate">{track.name}</div><div class="truncate muted small">{artists(track)}</div></div>
-          </div>
-        {/each}
-      </div>
+      <section class="area history-area">
+        <h2 class="section-head">Recently played</h2>
+        <div class="history">
+          {#each s.history as track, i (track.uri + i)}
+            <div class="past">
+              <Art {track} size={40} />
+              <div class="truncate"><div class="truncate">{track.name}</div><div class="truncate muted small">{artists(track)}</div></div>
+            </div>
+          {/each}
+        </div>
+      </section>
     {/if}
 
-    {#if me.admin}<AdminBar />{/if}
-    <a class="host-link muted" href="#/host">Open big-screen view ↗</a>
+    <div class="area extras">
+      {#if me.admin}<AdminBar />{/if}
+      <a class="host-link muted" href="#/host">Open big-screen view ↗</a>
+    </div>
   {/if}
 </div>
 
@@ -69,6 +75,9 @@
 
 <style>
   .page {
+    /* minmax(0, …) stops long unbreakable text from widening the page */
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'header' 'now' 'status' 'ballot' 'history' 'extras';
     max-width: 640px;
     margin: 0 auto;
     padding: calc(12px + env(safe-area-inset-top)) 16px 120px;
@@ -76,6 +85,7 @@
     gap: 1rem;
   }
   header {
+    grid-area: header;
     display: flex;
     align-items: center;
     gap: 0.6rem;
@@ -105,12 +115,67 @@
   .avatar {
     display: grid;
     place-items: center;
-    width: 34px;
-    height: 34px;
+    width: 2.125rem;
+    height: 2.125rem;
     border-radius: 50%;
     font-weight: 800;
     font-size: 0.8rem;
     color: #170f1f;
+  }
+  .area {
+    min-width: 0;
+  }
+  /* Single-column grids: minmax(0, …) lets long titles truncate instead of
+     pushing the column wider than the screen. */
+  .now,
+  .ballot,
+  .history-area,
+  .extras {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .now {
+    grid-area: now;
+    display: grid;
+    gap: 1rem;
+  }
+  .status {
+    grid-area: status;
+  }
+  .ballot {
+    grid-area: ballot;
+    display: grid;
+    gap: 1rem;
+    align-content: start;
+  }
+  .history-area {
+    grid-area: history;
+    display: grid;
+    gap: 1rem;
+  }
+  .extras {
+    grid-area: extras;
+    display: grid;
+    gap: 1rem;
+  }
+  /* Wide landscape screens (tablets, laptops): ballot gets its own column. */
+  @media (min-width: 1000px) and (orientation: landscape) {
+    .page {
+      max-width: 1240px;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+      grid-template-rows: auto auto auto auto 1fr;
+      grid-template-areas:
+        'header header'
+        'now ballot'
+        'status ballot'
+        'history ballot'
+        'extras ballot';
+      column-gap: 2rem;
+      align-items: start;
+    }
+    .ballot {
+      position: sticky;
+      top: 1rem;
+    }
   }
   .loading {
     text-align: center;
@@ -174,7 +239,7 @@
   }
   .fab {
     pointer-events: auto;
-    width: min(608px, 100%);
+    width: min(38rem, 100%);
     padding: 1em;
     font-size: 1.05rem;
   }

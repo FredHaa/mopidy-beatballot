@@ -62,10 +62,13 @@
     gap: 0.6rem;
     margin-bottom: 0.6rem;
     padding: 0.35rem 0.8rem 0.35rem 0.35rem;
-    border-radius: 99px;
+    border-radius: 6.188rem;
     background: rgb(61 220 151 / 0.12);
     border: 1px solid rgb(61 220 151 / 0.3);
     font-size: 0.85rem;
+  }
+  .next > .truncate {
+    min-width: 0;
   }
   .next :global(.art) {
     border-radius: 50%;

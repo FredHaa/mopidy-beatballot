@@ -41,7 +41,7 @@
     display: grid;
     place-items: center;
     background: rgb(13 10 20 / 0.85);
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(0.5rem);
   }
   .box {
     display: grid;
@@ -61,7 +61,7 @@
     color: var(--accent);
   }
   .box :global(.art) {
-    box-shadow: 0 20px 60px rgb(255 61 154 / 0.4);
+    box-shadow: 0 1.25rem 3.75rem rgb(255 61 154 / 0.4);
   }
   h2 {
     margin: 1rem 0 0.2rem;

@@ -122,8 +122,8 @@
   }
   .meter {
     flex: 1;
-    height: 5px;
-    border-radius: 99px;
+    height: 0.3125rem;
+    border-radius: 6.188rem;
     background: rgb(255 255 255 / 0.08);
     overflow: hidden;
   }
@@ -137,9 +137,9 @@
     display: flex;
   }
   .dot {
-    width: 22px;
-    height: 22px;
-    margin-left: -6px;
+    width: 1.375rem;
+    height: 1.375rem;
+    margin-left: -0.375rem;
     border-radius: 50%;
     border: 2px solid var(--bg);
     display: grid;
@@ -158,7 +158,7 @@
   .remove {
     padding: 0.2rem 0.4rem;
     color: var(--muted);
-    border-radius: 8px;
+    border-radius: 0.5rem;
   }
   .remove:hover {
     color: var(--accent);
@@ -166,10 +166,10 @@
   }
   .check {
     position: absolute;
-    top: -10px;
-    right: 14px;
+    top: -0.625rem;
+    right: 0.875rem;
     padding: 0.15em 0.6em;
-    border-radius: 99px;
+    border-radius: 6.188rem;
     background: var(--gradient);
     font-size: 0.7rem;
     font-weight: 800;

@@ -14,7 +14,7 @@
     align-items: center;
     gap: 0.35em;
     padding: 0.15em 0.55em;
-    border-radius: 999px;
+    border-radius: 62.44rem;
     font-size: 0.68rem;
     font-weight: 700;
     letter-spacing: 0.02em;

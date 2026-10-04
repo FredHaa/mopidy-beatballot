@@ -6,6 +6,48 @@
   import NowPlaying from './NowPlaying.svelte'
   import { fetchInfo, party } from '../lib/party.svelte.js'
 
+  // The big screen sizes everything from the viewport (see app.css), so it
+  // fills any TV, landscape or portrait. A-/A+ fine-tune it per screen.
+  const SCALE_KEY = 'beatballot.hostScale'
+  const MIN_SCALE = 0.6
+  const MAX_SCALE = 1.8
+  let scale = $state(loadScale())
+
+  function loadScale() {
+    try {
+      const v = Number(localStorage.getItem(SCALE_KEY))
+      return v >= MIN_SCALE && v <= MAX_SCALE ? v : 1
+    } catch {
+      return 1
+    }
+  }
+
+  function setScale(v) {
+    scale = Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, v)) * 10) / 10
+    try {
+      localStorage.setItem(SCALE_KEY, String(scale))
+    } catch {
+      // Not remembered in private mode; fine.
+    }
+  }
+
+  $effect(() => {
+    const root = document.documentElement
+    root.classList.add('host-view')
+    root.style.setProperty('--host-scale', String(scale))
+    return () => {
+      root.classList.remove('host-view')
+      root.style.removeProperty('--host-scale')
+    }
+  })
+
+  function onKey(event) {
+    if (event.target.closest?.('input, textarea')) return
+    if (event.key === '+' || event.key === '=') setScale(scale + 0.1)
+    if (event.key === '-' || event.key === '_') setScale(scale - 0.1)
+    if (event.key === '0') setScale(1)
+  }
+
   let info = $state({})
   $effect(() => {
     fetchInfo().then((i) => (info = i))
@@ -22,68 +64,181 @@
   const s = $derived(party.state)
 </script>
 
+<svelte:window onkeydown={onKey} />
+
 <div class="host">
-  <div class="left">
-    <div class="brand">🗳️ <span class="gradient-text">Beat Ballot</span>{#if s?.test_mode}<span class="badge test">TEST MODE</span>{/if}</div>
+  <header class="brand">
+    <span class="title">🗳️ <span class="gradient-text">Beat Ballot</span></span>
+    {#if s?.test_mode}<span class="badge test">TEST MODE</span>{/if}
+    <span class="tools">
+      <button onclick={() => setScale(scale - 0.1)} title="Smaller (−)" aria-label="Smaller text">A−</button>
+      <button onclick={() => setScale(1)} title="Reset size (0)" aria-label="Reset text size">{Math.round(scale * 100)}%</button>
+      <button onclick={() => setScale(scale + 0.1)} title="Bigger (+)" aria-label="Bigger text">A+</button>
+      <a href="#/" title="Back to voting">✕</a>
+    </span>
+  </header>
+
+  <section class="now">
     {#if s}<NowPlaying large />{/if}
-    <div class="join">
-      <div class="qr">{@html qrSvg}</div>
-      <div>
-        <div class="eyebrow">Join the vote</div>
-        <div class="url">{joinUrl.replace(/^https?:\/\//, '')}</div>
-        {#if pin}<div class="pin">PIN <strong>{pin}</strong></div>{/if}
-      </div>
-    </div>
-  </div>
-  <div class="right">
+  </section>
+
+  <section class="vote">
     {#if s}
       <LockStatus size={120} />
       <h2>Round {s.round.id}</h2>
-      <Candidates compact interactive={false} />
-      {#if party.session.user.admin}<AdminBar />{/if}
+      <div class="ballot">
+        <Candidates compact interactive={false} />
+      </div>
+      {#if party.session.user.admin}
+        <details class="controls">
+          <summary>Host controls</summary>
+          <AdminBar />
+        </details>
+      {/if}
     {:else}
       <p class="muted">Connecting…</p>
     {/if}
-    <a class="muted back" href="#/">← Back to voting</a>
-  </div>
+  </section>
+
+  <aside class="join">
+    <div class="qr">{@html qrSvg}</div>
+    <div class="join-text">
+      <div class="eyebrow">Join the vote</div>
+      <div class="url">{joinUrl.replace(/^https?:\/\//, '')}</div>
+      {#if pin}<div class="pin">PIN <strong>{pin}</strong></div>{/if}
+    </div>
+  </aside>
 </div>
 
 <style>
+  /* Landscape: now playing + join on the left, the ballot on the right. */
   .host {
-    min-height: 100dvh;
+    --host-art: min(15rem, 30vh);
+    height: 100dvh;
     display: grid;
-    grid-template-columns: minmax(320px, 1fr) minmax(360px, 1.2fr);
-    gap: 2.5rem;
-    padding: 2.5rem;
-    max-width: 1600px;
-    margin: 0 auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'brand vote'
+      'now vote'
+      'join vote';
+    gap: 1.5rem 2.5rem;
+    padding: 2rem 2.5rem;
+    overflow: hidden;
   }
-  .left {
-    position: sticky;
-    top: 2.5rem;
-    height: calc(100dvh - 5rem);
+  /* Portrait: one column, QR at the bottom. */
+  @media (orientation: portrait) {
+    .host {
+      --host-art: min(10rem, 15vh);
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      grid-template-areas: 'brand' 'now' 'vote' 'join';
+      padding: 2rem;
+    }
+    /* Art beside the title, so the ballot gets the height. */
+    .now :global(.now.large) {
+      flex-direction: row;
+      text-align: left;
+      padding: 1.5rem;
+    }
+    .now :global(.now.large .eyebrow) {
+      justify-content: flex-start;
+    }
+    .now :global(.now.large h2) {
+      font-size: 2rem;
+    }
   }
-  .left,
-  .right {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-    min-width: 0;
-  }
+
   .brand {
+    grid-area: brand;
     display: flex;
     align-items: center;
     gap: 0.8rem;
+    min-width: 0;
+  }
+  .title {
     font-weight: 900;
     font-size: 2rem;
     letter-spacing: -0.03em;
+    white-space: nowrap;
   }
   .badge.test {
     background: rgb(255 204 61 / 0.15);
     color: var(--warn);
     font-size: 0.8rem;
   }
+  .tools {
+    margin-left: auto;
+    display: flex;
+    gap: 0.3rem;
+    opacity: 0.35;
+    transition: opacity 0.2s;
+  }
+  .tools:hover,
+  .tools:focus-within {
+    opacity: 1;
+  }
+  .tools button,
+  .tools a {
+    min-width: 2.2rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 0.6rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-align: center;
+    text-decoration: none;
+  }
+
+  .now {
+    grid-area: now;
+    min-height: 0;
+    display: grid;
+    align-content: start;
+    gap: 1rem;
+  }
+  .now :global(.now) {
+    max-height: 100%;
+  }
+
+  .vote {
+    grid-area: vote;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+  }
+  h2 {
+    margin: 0;
+    font-size: 1.6rem;
+  }
+  /* The ballot takes the remaining height; extra songs fade out at the bottom. */
+  .ballot {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    padding-top: 0.7rem; /* room for the "Your vote" tag */
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 3rem), transparent);
+  }
+  .controls {
+    flex: none;
+    max-height: 45%;
+    overflow: auto;
+  }
+  .controls summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 0.6rem;
+  }
+
   .join {
+    grid-area: join;
     display: flex;
     align-items: center;
     gap: 1.5rem;
@@ -91,17 +246,20 @@
     border-radius: var(--radius);
     background: var(--card);
     border: 1px solid var(--border);
-    margin-top: auto;
+    min-width: 0;
   }
   .qr {
-    width: 150px;
+    width: min(9.5rem, 18vh);
     flex: none;
     background: #fff;
-    border-radius: 14px;
-    padding: 6px;
+    border-radius: 0.875rem;
+    padding: 0.375rem;
   }
   .qr :global(svg) {
     display: block;
+  }
+  .join-text {
+    min-width: 0;
   }
   .eyebrow {
     font-weight: 800;
@@ -114,7 +272,7 @@
     font-size: 1.3rem;
     font-weight: 700;
     margin: 0.3rem 0;
-    word-break: break-all;
+    overflow-wrap: anywhere;
   }
   .pin {
     font-size: 1.2rem;
@@ -125,23 +283,5 @@
     font-size: 2rem;
     letter-spacing: 0.2em;
     margin-left: 0.4rem;
-  }
-  h2 {
-    margin: 0;
-    font-size: 1.6rem;
-  }
-  .back {
-    margin-top: auto;
-    font-size: 0.85rem;
-  }
-  @media (max-width: 900px) {
-    .left {
-      position: static;
-      height: auto;
-    }
-    .host {
-      grid-template-columns: 1fr;
-      padding: 16px;
-    }
   }
 </style>

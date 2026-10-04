@@ -1,7 +1,7 @@
 <script>
   import { duration } from '../lib/format.js'
 
-  /** ms until voting locks; the ring drains over the final minute. */
+  /** ms until voting locks; the ring drains over the final minute. size: px at 16px rem. */
   let { ms, size = 84 } = $props()
 
   const stroke = 7
@@ -11,8 +11,8 @@
   const urgent = $derived(ms <= 10000)
 </script>
 
-<div class="ring" class:urgent style:width="{size}px" style:height="{size}px">
-  <svg width={size} height={size} viewBox="0 0 {size} {size}" aria-hidden="true">
+<div class="ring" class:urgent style:width="{size / 16}rem" style:height="{size / 16}rem">
+  <svg width="100%" height="100%" viewBox="0 0 {size} {size}" aria-hidden="true">
     <defs>
       <linearGradient id="ring-grad" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0%" stop-color="var(--accent)" />
@@ -33,7 +33,7 @@
       transform="rotate(-90 {size / 2} {size / 2})"
     />
   </svg>
-  <span class="label" style:font-size="{size / 4.2}px">{ms < 60000 ? Math.ceil(ms / 1000) : duration(ms)}</span>
+  <span class="label" style:font-size="{size / 4.2 / 16}rem">{ms < 60000 ? Math.ceil(ms / 1000) : duration(ms)}</span>
 </div>
 
 <style>

@@ -115,7 +115,7 @@
   }
   .login {
     padding: 0.9rem;
-    border-radius: 14px;
+    border-radius: 0.875rem;
     background: rgb(95 227 240 / 0.08);
     border: 1px solid rgb(95 227 240 / 0.35);
   }

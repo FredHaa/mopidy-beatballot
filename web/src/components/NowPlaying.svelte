@@ -16,7 +16,7 @@
     <div class="backdrop" style:background-image="url({now.track.image})"></div>
   {/if}
   {#if now}
-    <Art track={now.track} size={large ? 220 : 84} />
+    <Art track={now.track} size={large ? 'var(--host-art, 13.75rem)' : 84} />
     <div class="meta">
       <div class="eyebrow">
         {#if party.state.paused_by_host || party.state.playback === 'paused'}⏸ Paused{:else}<span class="eq"><i></i><i></i><i></i></span> Now playing{/if}
@@ -54,7 +54,7 @@
   .playback-error {
     margin-top: -0.4rem;
     padding: 0.7rem 1rem;
-    border-radius: 14px;
+    border-radius: 0.875rem;
     background: rgb(255 204 61 / 0.1);
     border: 1px solid rgb(255 204 61 / 0.35);
     color: var(--warn);
@@ -79,7 +79,7 @@
     z-index: -1;
     background-size: cover;
     background-position: center;
-    filter: blur(40px) saturate(1.6) brightness(0.45);
+    filter: blur(2.5rem) saturate(1.6) brightness(0.45);
     transition: background-image 0.6s;
   }
   .meta {
@@ -107,9 +107,9 @@
   }
   .bar {
     position: relative;
-    height: 6px;
+    height: 0.375rem;
     margin-top: 0.9rem;
-    border-radius: 99px;
+    border-radius: 6.188rem;
     background: rgb(255 255 255 / 0.12);
   }
   .fill {
@@ -123,7 +123,7 @@
     top: 50%;
     transform: translate(-50%, -50%);
     font-size: 0.7rem;
-    filter: drop-shadow(0 0 4px #000);
+    filter: drop-shadow(0 0 0.25rem #000);
   }
   .times {
     display: flex;
@@ -136,10 +136,10 @@
     display: inline-flex;
     align-items: flex-end;
     gap: 2px;
-    height: 10px;
+    height: 0.625rem;
   }
   .eq i {
-    width: 3px;
+    width: 0.1875rem;
     background: var(--accent);
     animation: eq 0.9s ease-in-out infinite;
   }
@@ -152,10 +152,10 @@
   @keyframes eq {
     0%,
     100% {
-      height: 3px;
+      height: 0.1875rem;
     }
     50% {
-      height: 10px;
+      height: 0.625rem;
     }
   }
 
