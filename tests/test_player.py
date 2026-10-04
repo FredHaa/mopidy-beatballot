@@ -134,5 +134,47 @@ def test_search_takes_turns_between_backends_and_skips_pending_login():
     core.get_uri_schemes = returns(["spotify", "tidal", "m3u"])
     player = MopidyPlayer(core, login_pending=lambda s: s == "tidal")
     found = player.search("x")
-    assert searched == [["spotify:", "m3u:"]]
+    assert searched == [["spotify:"]]  # tidal pending, m3u not searchable
     assert [t.name for t in found] == ["S1", "T1", "S2"]
+
+
+def _search_core(results_by_scheme):
+    core, _ = make_core()
+    searched = []
+
+    def search(query, uris=None, exact=False):
+        searched.append(uris)
+        return Future([results_by_scheme[u] for u in uris])
+
+    core.library.search = search
+    core.get_uri_schemes = returns(["spotify", "tidal", "http"])
+    return core, searched
+
+
+def test_fast_search_replaces_mopidy_search_for_that_service():
+    from mopidy_beatballot.tracks import TrackInfo
+
+    core, searched = _search_core(
+        {"spotify:": SearchResult(tracks=(Track(uri="spotify:track:1", name="S1"),))}
+    )
+    fast = TrackInfo("tidal:track:1:2:3", "T1", ("A",), image="https://img/t1")
+    player = MopidyPlayer(core, fast_search={"tidal": lambda q, n: [fast]})
+    found = player.search("x")
+    assert searched == [["spotify:"]]  # tidal not sent to Mopidy, http skipped
+    assert [t.name for t in found] == ["T1", "S1"]
+    assert found[0].image == "https://img/t1"
+
+
+def test_fast_search_falls_back_to_mopidy():
+    tidal = SearchResult(tracks=(Track(uri="tidal:track:1:2:3", name="T1"),))
+    core, searched = _search_core({"tidal:": tidal, "spotify:": SearchResult()})
+
+    def broken(query, limit):
+        raise ConnectionError("tidal down")
+
+    player = MopidyPlayer(core, ["tidal"], fast_search={"tidal": broken})
+    assert [t.name for t in player.search("x")] == ["T1"]
+    assert searched == [["tidal:"]]
+    # Not logged in yet (None) also falls back.
+    player = MopidyPlayer(core, ["tidal"], fast_search={"tidal": lambda q, n: None})
+    assert [t.name for t in player.search("x")] == ["T1"]

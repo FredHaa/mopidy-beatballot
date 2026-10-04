@@ -390,7 +390,18 @@ def make_app(config: Any, core: Any) -> list[tuple[Any, ...]]:
         tidal = tidal_auth.ACTIVE
         return source == "tidal" and tidal is not None and tidal.pending
 
-    api = FrontendApi(MopidyPlayer(core, settings.search_schemes, login_pending))
+    def tidal_search(query: str, limit: int) -> list[TrackInfo] | None:
+        tidal = tidal_auth.ACTIVE
+        return tidal.search_tracks(query, limit) if tidal else None
+
+    api = FrontendApi(
+        MopidyPlayer(
+            core,
+            settings.search_schemes,
+            login_pending,
+            fast_search={"tidal": tidal_search},
+        )
+    )
     return routes(auth, api, settings, HUB)
 
 

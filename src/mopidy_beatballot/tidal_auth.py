@@ -16,6 +16,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from .tracks import TrackInfo
+
 logger = logging.getLogger(__name__)
 
 RETRY_DELAY_S = 5.0
@@ -52,6 +54,8 @@ class TidalAuth:
         self._lock = threading.Lock()
         self._stopped = threading.Event()
         self.state = "checking"  # checking | logged_in | pending | error
+        self.session: Any = None  # The logged-in session, reused for search.
+        self._search_lock = threading.Lock()
         self.url: str | None = None
         self.code: str | None = None
         self.expires_at: float | None = None
@@ -80,6 +84,40 @@ class TidalAuth:
     def stop(self) -> None:
         self._stopped.set()
 
+    def search_tracks(self, query: str, limit: int) -> list[TrackInfo] | None:
+        """Search Tidal for tracks directly: one API request.
+
+        Mopidy-Tidal's search also fetches the top tracks of every matching
+        artist and the tracks of every matching album (~100 requests, ~5 s).
+        Returns None when not logged in, so the caller can fall back.
+        """
+        session = self.session
+        if session is None:
+            return None
+        import tidalapi  # noqa: PLC0415
+
+        with self._search_lock:  # One requests.Session, used from web threads.
+            found = session.search(query, models=[tidalapi.Track], limit=limit)
+        tracks = []
+        for t in found.get("tracks", [])[:limit]:
+            album = getattr(t, "album", None)
+            artists = getattr(t, "artists", None) or [t.artist]
+            image = None
+            if album is not None and getattr(album, "cover", None):
+                image = album.image(320)
+            tracks.append(
+                TrackInfo(
+                    # Same URI format as Mopidy-Tidal, which plays them.
+                    uri=f"tidal:track:{t.artist.id}:{album.id if album else 0}:{t.id}",
+                    name=getattr(t, "full_name", None) or t.name,
+                    artists=tuple(a.name for a in artists if a and a.name),
+                    album=album.name if album else "",
+                    length_ms=t.duration * 1000 if t.duration else None,
+                    image=image,
+                )
+            )
+        return tracks
+
     def _set(self, state: str, **fields: Any) -> None:
         with self._lock:
             self.state = state
@@ -96,6 +134,7 @@ class TidalAuth:
                 and session.check_login()
             ):
                 logger.info("Beat Ballot: Tidal session is valid")
+                self.session = session
                 self._set("logged_in")
                 return
         except Exception:
@@ -117,6 +156,7 @@ class TidalAuth:
                 self.session_file.parent.mkdir(parents=True, exist_ok=True)
                 session.save_session_to_file(self.session_file)
                 logger.info("Beat Ballot: Tidal login OK")
+                self.session = session
                 self._set("logged_in")
                 return
             except TimeoutError:

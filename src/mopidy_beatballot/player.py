@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any
 
 from .backends import source_of
@@ -15,6 +16,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 TIMEOUT = 20
+# Mopidy's stream backends never return search results.
+NOT_SEARCHABLE = {"http", "https", "rtmp", "rtmps", "rtsp", "m3u"}
+
+# A fast, direct search for one service: (query, limit) -> tracks, or None to
+# fall back to Mopidy's search for that service.
+type FastSearch = Callable[[str, int], list[TrackInfo] | None]
 
 
 def track_info(track: Track) -> TrackInfo:
@@ -33,10 +40,12 @@ class MopidyPlayer:
         core: Any,
         search_schemes: Iterable[str] = (),
         login_pending: Callable[[str], bool] = lambda source: False,
+        fast_search: dict[str, FastSearch] | None = None,
     ) -> None:
         self.core = core
         self.search_schemes = list(search_schemes)
         self.login_pending = login_pending
+        self.fast_search = fast_search or {}
 
     def prepare(self) -> None:
         """Put the tracklist in the mode Beat Ballot expects: a play-once queue."""
@@ -127,30 +136,65 @@ class MopidyPlayer:
                 images[uri] = big[0].uri if big else ranked[-1].uri
         return images
 
-    def _search_uris(self) -> list[str]:
+    def _search_schemes(self) -> list[str]:
         schemes = self.search_schemes or self.core.get_uri_schemes().get(
             timeout=TIMEOUT
         )
         # A backend waiting for its login would block the whole search.
-        return [f"{s}:" for s in schemes if not self.login_pending(source_of(s))]
+        return [
+            s
+            for s in schemes
+            if s not in NOT_SEARCHABLE and not self.login_pending(source_of(s))
+        ]
+
+    def _mopidy_search(self, query: str, schemes: list[str]) -> list[list[TrackInfo]]:
+        if not schemes:
+            return []
+        results = self.core.library.search(
+            query={"any": [query]}, uris=[f"{s}:" for s in schemes]
+        ).get(timeout=TIMEOUT)
+        return [[track_info(t) for t in r.tracks] for r in results if r]
+
+    def _fast_or_mopidy(self, scheme: str, query: str, limit: int) -> list[TrackInfo]:
+        try:
+            tracks = self.fast_search[scheme](query, limit)
+        except Exception:
+            logger.warning("Fast %s search failed, using Mopidy", scheme, exc_info=True)
+            tracks = None
+        if tracks is None:
+            found = self._mopidy_search(query, [scheme])
+            tracks = found[0] if found else []
+        return tracks
 
     def search(self, query: str, limit: int = 12) -> list[TrackInfo]:
-        uris = self._search_uris()
-        if not uris:
+        schemes = self._search_schemes()
+        if not schemes:
             return []
-        results = self.core.library.search(query={"any": [query]}, uris=uris).get(
-            timeout=TIMEOUT
-        )
+        fast = [s for s in schemes if s in self.fast_search]
+        rest = [s for s in schemes if s not in self.fast_search]
+        # Fast services and Mopidy's search for the rest run at the same time.
+        with ThreadPoolExecutor(max_workers=len(fast) + 1) as pool:
+            fast_jobs = [
+                pool.submit(self._fast_or_mopidy, s, query, limit) for s in fast
+            ]
+            rest_job = pool.submit(self._mopidy_search, query, rest)
+            per_backend = [job.result() for job in fast_jobs] + rest_job.result()
         # Take turns between backends so every service shows up in the results.
-        per_backend = [[track_info(t) for t in r.tracks] for r in results if r]
         seen: dict[str, TrackInfo] = {}
         for rank in range(max((len(b) for b in per_backend), default=0)):
             for tracks in per_backend:
                 if rank < len(tracks) and len(seen) < limit:
                     seen.setdefault(tracks[rank].uri, tracks[rank])
         tracks = list(seen.values())
-        images = self.images(t.uri for t in tracks)
+        images = self.images(t.uri for t in tracks if not t.image)
         return [
-            TrackInfo(t.uri, t.name, t.artists, t.album, t.length_ms, images.get(t.uri))
+            TrackInfo(
+                t.uri,
+                t.name,
+                t.artists,
+                t.album,
+                t.length_ms,
+                t.image or images.get(t.uri),
+            )
             for t in tracks
         ]

@@ -85,3 +85,38 @@ def test_expired_link_is_replaced(tmp_path, monkeypatch):
     assert done.wait(2)
     assert seen == ["pending", "pending"]
     auth.stop()
+
+
+def test_search_tracks_maps_tidal_results(tmp_path):
+    from types import SimpleNamespace as NS
+
+    album = NS(
+        id=20, name="Discovery", cover="abc", image=lambda d: f"https://cover/{d}"
+    )
+    track = NS(
+        id=30,
+        name="One More Time",
+        full_name="One More Time (Radio Edit)",
+        artist=NS(id=10, name="Daft Punk"),
+        artists=[NS(id=10, name="Daft Punk")],
+        album=album,
+        duration=320,
+    )
+    calls = []
+
+    class Session:
+        def search(self, query, models, limit):
+            calls.append((query, limit))
+            return {"tracks": [track]}
+
+    auth = TidalAuth(tmp_path / "s.json")
+    assert auth.search_tracks("daft", 5) is None  # not logged in: caller falls back
+    auth.session = Session()
+    [t] = auth.search_tracks("daft", 5)
+    assert calls == [("daft", 5)]
+    assert t.uri == "tidal:track:10:20:30"
+    assert t.name == "One More Time (Radio Edit)"
+    assert t.artists == ("Daft Punk",)
+    assert t.album == "Discovery"
+    assert t.length_ms == 320_000
+    assert t.image == "https://cover/320"
