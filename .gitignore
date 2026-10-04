@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+web/node_modules/
+src/mopidy_beatballot/static/
+data/
+.env
+dist/

@@ -1,0 +1,18 @@
+services:
+  beatballot:
+    image: ghcr.io/fredhaa/beatballot:latest
+    build: .
+    container_name: beatballot
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "6680:6680"
+    devices:
+      - /dev/snd:/dev/snd
+    group_add:
+      - audio
+    volumes:
+      # Spotify login cache and the token-signing secret survive restarts.
+      - ./data:/var/lib/mopidy
+      # Optional: extra Mopidy settings.
+      # - ./extra.conf:/etc/mopidy/extra.conf:ro
