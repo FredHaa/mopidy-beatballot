@@ -148,3 +148,9 @@ def test_bad_command_does_not_crash(tmp_path):
     agent.handle({"cmd": "enqueue", "seq": 3})  # missing fields
     agent.handle({"cmd": "dance", "seq": 4})
     assert agent.ack == 4
+
+
+def test_player_identifies_itself(tmp_path):
+    agent, _ = make_agent(tmp_path)
+    assert agent.user_agent.startswith("BeatBallot-Player/")
+    assert "Python" not in agent.user_agent

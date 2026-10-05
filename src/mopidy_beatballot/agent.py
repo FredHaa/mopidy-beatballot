@@ -28,6 +28,8 @@ from .settings import Settings
 logger = logging.getLogger(__name__)
 
 REPORT_EVERY_S = 1.0
+# Some proxies (e.g. Cloudflare's browser check) block Python's default agent.
+USER_AGENT = "BeatBallot-Player/{} (+https://github.com/FredHaa/mopidy-beatballot)"
 MAX_BACKOFF_S = 30.0
 
 # The running agent, for the player-mode health endpoint.
@@ -54,6 +56,9 @@ class PlayerAgent:
         self.base = hub_base(settings.hub_url)
         self.pair_code = settings.pair_code
         self.name = settings.player_name or socket.gethostname()
+        from . import __version__  # noqa: PLC0415
+
+        self.user_agent = USER_AGENT.format(__version__)
         self.core = core
         self.player = MopidyPlayer(core)
         self.token_file = data_dir / "player-token"
@@ -208,15 +213,21 @@ class PlayerAgent:
         request = urllib.request.Request(
             f"{self.base}/api/player/pair",
             data=json.dumps({"code": self.pair_code, "name": self.name}).encode(),
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "User-Agent": self.user_agent},
             method="POST",
         )
         try:
             with urllib.request.urlopen(request, timeout=20) as res:
                 data = json.load(res)
         except urllib.error.HTTPError as e:
-            detail = json.loads(e.read() or b"{}").get("error", e.reason)
+            body = e.read()
+            try:
+                detail = json.loads(body).get("error", e.reason)
+            except ValueError:
+                detail = f"HTTP {e.code}: {body[:120].decode(errors='replace')}"
             raise PairingError(f"Pairing failed: {detail}") from e
+        except ValueError as e:
+            raise PairingError("Pairing failed: the hub didn't answer with JSON") from e
         self.token_file.parent.mkdir(parents=True, exist_ok=True)
         self.token_file.write_text(data["token"])
         os.chmod(self.token_file, 0o600)
@@ -239,6 +250,7 @@ class PlayerAgent:
                     headers={
                         "Authorization": f"Bearer {token}",
                         "X-Player-Name": self.name,
+                        "User-Agent": self.user_agent,
                     },
                 )
                 ws = await websocket_connect(request, ping_interval=20, ping_timeout=15)
