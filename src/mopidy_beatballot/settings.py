@@ -6,9 +6,20 @@ from typing import Any
 
 from .backends import normalize_playlist, split_list
 
+MODES = ("standalone", "hub", "player")
+
 
 @dataclass
 class Settings:
+    # standalone: one party, music plays on this machine (the original mode).
+    # hub: many parties, music plays on paired remote players.
+    # player: a remote player that plays what its hub sends.
+    mode: str = "standalone"
+    party_name: str = "Beat Ballot"
+    hub_pin: str = ""  # Hub owner: create parties, pair players, Tidal login.
+    hub_url: str = ""  # Player: e.g. https://www.klubhuset.party
+    pair_code: str = ""  # Player: one-time code from the hub page.
+    player_name: str = ""
     playlists: list[str] = field(default_factory=list)
     pin: str = "1234"
     admin_pin: str = ""

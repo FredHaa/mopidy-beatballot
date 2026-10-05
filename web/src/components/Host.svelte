@@ -4,7 +4,7 @@
   import Candidates from './Candidates.svelte'
   import LockStatus from './LockStatus.svelte'
   import NowPlaying from './NowPlaying.svelte'
-  import { fetchInfo, party } from '../lib/party.svelte.js'
+  import { fetchInfo, party, roomUrl } from '../lib/party.svelte.js'
 
   // The big screen sizes everything from the viewport (see app.css), so it
   // fills any TV, landscape or portrait. A-/A+ fine-tune it per screen.
@@ -53,7 +53,7 @@
     fetchInfo().then((i) => (info = i))
   })
 
-  const joinUrl = $derived(info.public_url || `${location.origin}${import.meta.env.BASE_URL}`)
+  const joinUrl = $derived(info.public_url || roomUrl())
   const pin = $derived(party.pin ?? party.session.pin)
   const qrSvg = $derived.by(() => {
     const qr = qrcode(0, 'M')

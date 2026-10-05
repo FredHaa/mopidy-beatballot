@@ -1,0 +1,22 @@
+# A Beat Ballot player: plays a hub's party on this machine's speakers.
+# Get the pairing code from the hub page (Pair player); it's only used once.
+services:
+  beatballot-player:
+    image: ghcr.io/fredhaa/beatballot:latest
+    container_name: beatballot-player
+    restart: unless-stopped
+    environment:
+      BALLOT_MODE: player
+      BALLOT_HUB_URL: ${BALLOT_HUB_URL:?e.g. https://www.klubhuset.party}
+      BALLOT_PAIR_CODE: ${BALLOT_PAIR_CODE:-}
+      BALLOT_PLAYER_NAME: ${BALLOT_PLAYER_NAME:-}
+      # Find cards with `aplay -l`, e.g. "alsasink device=hw:Headphones"
+      AUDIO_OUTPUT: ${AUDIO_OUTPUT:-alsasink}
+      MIXER_VOLUME: ${MIXER_VOLUME:-80}
+    devices:
+      - /dev/snd:/dev/snd
+    group_add:
+      - audio
+    volumes:
+      # Keeps the player's token, so pairing happens once.
+      - ./player-data:/var/lib/mopidy

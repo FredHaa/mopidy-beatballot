@@ -1,5 +1,13 @@
 <script>
-  import { join } from '../lib/party.svelte.js'
+  import { fetchInfo, join } from '../lib/party.svelte.js'
+
+  let room = $state(null)
+  let missing = $state(false)
+  $effect(() => {
+    fetchInfo()
+      .then((i) => (i.room ? (room = i.room) : (missing = true)))
+      .catch(() => (missing = true))
+  })
 
   let name = $state('')
   let pin = $state(new URLSearchParams(location.search).get('pin') ?? '')
@@ -23,7 +31,11 @@
 <main>
   <div class="logo">🗳️</div>
   <h1><span class="gradient-text">Beat Ballot</span></h1>
-  <p class="muted">Vote on what plays next.</p>
+  {#if missing}
+    <p class="muted">This party doesn't exist (anymore). Check the link.</p>
+  {:else}
+    <p class="muted">{room ? `Vote on what plays next at ${room.name}.` : 'Vote on what plays next.'}</p>
+  {/if}
 
   <form onsubmit={submit}>
     <label>

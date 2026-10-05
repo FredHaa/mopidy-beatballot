@@ -76,7 +76,7 @@ class MopidyPlayer:
         tl_tracks = self.core.tracklist.get_tl_tracks().get(timeout=TIMEOUT)
         return [(t.tlid, track_info(t.track)) for t in tl_tracks]
 
-    def enqueue(self, uri: str) -> None:
+    def enqueue(self, uri: str, track: TrackInfo | None = None) -> None:
         self.core.tracklist.add(uris=[uri]).get(timeout=TIMEOUT)
 
     def remove(self, tlid: int) -> None:

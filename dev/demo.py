@@ -17,11 +17,13 @@ import time
 import tornado.web
 from tornado.ioloop import PeriodicCallback
 
+from mopidy_beatballot import rooms
 from mopidy_beatballot.hub import HUB
-from mopidy_beatballot.party import PartyController
+from mopidy_beatballot.parties import Parties
+from mopidy_beatballot.rooms import Room, RoomStore, slugify
 from mopidy_beatballot.settings import Settings
 from mopidy_beatballot.tracks import TrackInfo
-from mopidy_beatballot.web import Auth, routes
+from mopidy_beatballot.web import Auth, Context, routes
 
 SONGS = [
     ("Dancing Queen", "ABBA", 231),
@@ -100,7 +102,7 @@ class SimPlayer:
     def remove(self, tlid: int) -> None:
         self.queue_ = [t for t in self.queue_ if t[0] != tlid]
 
-    def enqueue(self, uri: str) -> None:
+    def enqueue(self, uri: str, track=None) -> None:
         self._tlid += 1
         self.queue_.append((self._tlid, self.tracks[uri]))
 
@@ -151,34 +153,61 @@ class SimPlayer:
         self._started = time.monotonic()
 
 
-class DemoApi:
-    """Same interface as web.FrontendApi, calling the controller directly."""
+class DemoFrontend:
+    """The party/hub API of BallotFrontend, minus Mopidy."""
 
-    def __init__(self, party: PartyController, player: SimPlayer) -> None:
-        self.party = party
-        self.player = player
+    def __init__(self, parties: Parties) -> None:
+        self.parties = parties
+
+    def snapshot(self, room_id):
+        return {
+            **self.parties.party(room_id).snapshot(),
+            "room": self.parties.store.get(room_id).public(),
+        }
+
+    def vote(self, room_id, user_id, name, uri):
+        self.parties.party(room_id).vote(user_id, name, uri)
+
+    def retract(self, room_id, user_id):
+        self.parties.party(room_id).retract(user_id)
+
+    def suggest(self, room_id, user_id, name, track):
+        self.parties.party(room_id).suggest(user_id, name, track)
+
+    def admin(self, room_id, action, value=None):
+        self.parties.admin(room_id, action, value)
+
+    def overview(self, base_url):
+        return self.parties.overview(base_url)
+
+    def create_room(self, fields):
+        return self.parties.create_room(**fields)
+
+    def update_room(self, room_id, changes):
+        return self.parties.update_room(room_id, changes)
+
+    def delete_room(self, room_id):
+        self.parties.delete_room(room_id)
+
+
+class DemoApi:
+    """Same interface as web.FrontendApi, calling DemoFrontend directly."""
+
+    def __init__(self, front: DemoFrontend, library: SimPlayer) -> None:
+        self.front = front
+        self.library = library
 
     async def call(self, method: str, *args):
-        if method == "snapshot":
-            return self.party.snapshot()
-        if method == "admin":
-            action, value = args
-            return {
-                "skip": lambda: self.party.skip(),
-                "pause": lambda: self.party.pause(),
-                "resume": lambda: self.party.resume(),
-                "test_mode": lambda: self.party.set_test_mode(bool(value)),
-                "carry_over": lambda: self.party.set_carry_over(bool(value)),
-                "remove": lambda: self.party.remove_candidate(value),
-                "playlists": lambda: self.party.set_playlists(value),
-            }[action]()
-        return getattr(self.party, method)(*args)
+        return getattr(self.front, method)(*args)
+
+    def tell(self, method: str, *args) -> None:
+        getattr(self.front, method)(*args)
 
     async def search(self, q: str):
-        return self.player.search(q)
+        return self.library.search(q)
 
     async def lookup(self, uri: str):
-        return self.player.lookup(uri)
+        return self.library.lookup(uri)
 
     def available(self) -> bool:
         return True
@@ -190,19 +219,42 @@ async def main() -> None:
     parser.add_argument("--real-time", action="store_true", help="disable test mode")
     parser.add_argument("--speed", type=float, default=1.0)
     parser.add_argument("--bots", type=int, default=4, help="simulated voters")
+    parser.add_argument(
+        "--hub", action="store_true", help="hub mode: two parties, hub PIN 0000"
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
 
     settings = Settings(
-        playlists=["demo:playlist"],
-        pin="1234",
-        admin_pin="9999",
+        mode="hub" if args.hub else "standalone",
+        hub_pin="0000" if args.hub else "",
         test_mode=not args.real_time,
     )
-    player = SimPlayer(library(), args.speed)
-    party = PartyController(settings, player, HUB.broadcast)
-    party.start()
-    api = DemoApi(party, player)
+    store = RoomStore()
+    names = ["Klubhuset", "Garden Party"] if args.hub else ["Beat Ballot"]
+    for i, name in enumerate(names):
+        store.add(
+            Room(
+                id=f"room{i}",
+                slug="party" if not args.hub else slugify(name),
+                name=name,
+                pin="1234" if i == 0 else "4321",
+                admin_pin="9999" if i == 0 else "8888",
+                playlists=["demo:playlist"],
+                test_mode=not args.real_time,
+            )
+        )
+    rooms.STORE = store
+    tracks = library()
+    players: dict[str, SimPlayer] = {}
+
+    def make_player(room: Room) -> SimPlayer:
+        players[room.id] = SimPlayer(tracks, args.speed)
+        return players[room.id]
+
+    parties = Parties(settings, store, make_player, HUB.broadcast, forget=HUB.forget)
+    parties.start()
+    api = DemoApi(DemoFrontend(parties), SimPlayer(tracks, args.speed))
 
     rng = random.Random()
     bots = [
@@ -213,31 +265,28 @@ async def main() -> None:
     ]
 
     def bot_vote() -> None:
-        candidates = list(party.election.candidates)
-        if candidates and rng.random() < 0.5:
-            uid, name = rng.choice(bots)
-            party.vote(uid, name, rng.choice(candidates))
+        for party in parties.parties.values():
+            candidates = list(party.election.candidates)
+            if candidates and rng.random() < 0.5:
+                uid, name = rng.choice(bots)
+                party.vote(uid, name, rng.choice(candidates))
 
-    PeriodicCallback(party.tick, 250).start()
+    PeriodicCallback(parties.tick, 250).start()
     if bots:
         PeriodicCallback(bot_vote, 2500).start()
 
+    ctx = Context(Auth(b"demo" * 8), api, settings, HUB)
     app = tornado.web.Application(
         [
             (r"/", tornado.web.RedirectHandler, {"url": "/beatballot/"}),
             (r"/beatballot", tornado.web.RedirectHandler, {"url": "/beatballot/"}),
-            *[
-                (f"/beatballot{rule[0]}", *rule[1:])
-                for rule in routes(
-                    Auth(b"demo" * 8, "1234", "9999"), api, settings, HUB
-                )
-            ],
+            *[(f"/beatballot{rule[0]}", *rule[1:]) for rule in routes(ctx)],
         ]
     )
     app.listen(args.port)
-    print(
-        f"Beat Ballot: http://localhost:{args.port}/beatballot/ PIN 1234, host 9999"
-    )
+    print(f"Beat Ballot: http://localhost:{args.port}/beatballot/ PIN 1234, host 9999")
+    if args.hub:
+        print("  hub page: #/hub with hub PIN 0000; 2nd party PIN 4321, host 8888")
     await asyncio.Event().wait()
 
 

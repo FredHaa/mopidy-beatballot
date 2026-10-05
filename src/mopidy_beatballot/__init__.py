@@ -24,8 +24,14 @@ class Extension(ext.Extension):
     @override
     def get_config_schema(self) -> config.ConfigSchema:
         schema = super().get_config_schema()
+        schema["mode"] = config.String(choices=("standalone", "hub", "player"))
+        schema["party_name"] = config.String(optional=True)
+        schema["hub_pin"] = config.Secret(optional=True)
+        schema["hub_url"] = config.String(optional=True)
+        schema["pair_code"] = config.Secret(optional=True)
+        schema["player_name"] = config.String(optional=True)
         schema["playlists"] = config.List(optional=True)
-        schema["pin"] = config.Secret()
+        schema["pin"] = config.Secret(optional=True)
         schema["admin_pin"] = config.Secret(optional=True)
         schema["candidates"] = config.Integer(minimum=1, maximum=10)
         schema["lock_before_end"] = config.Integer(minimum=1)

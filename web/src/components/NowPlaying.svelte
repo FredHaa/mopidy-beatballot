@@ -35,13 +35,18 @@
     </div>
   {:else}
     <div class="meta">
-      <div class="eyebrow">Waiting for music</div>
-      <h2>
-        {party.state?.error ??
-          (party.state?.suggestions_only
-            ? 'Add a song to get the party started'
-            : 'Vote or add a song to get the party started')}
-      </h2>
+      {#if party.state?.player?.remote && !party.state.player.online}
+        <div class="eyebrow">Speaker offline</div>
+        <h2>The party's player isn't connected. Keep voting: the music starts when it's back.</h2>
+      {:else}
+        <div class="eyebrow">Waiting for music</div>
+        <h2>
+          {party.state?.error ??
+            (party.state?.suggestions_only
+              ? 'Add a song to get the party started'
+              : 'Vote or add a song to get the party started')}
+        </h2>
+      {/if}
     </div>
   {/if}
 </section>

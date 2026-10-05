@@ -45,7 +45,7 @@ class Player(Protocol):
     def current(self) -> tuple[int, TrackInfo] | None: ...
     def tracklist_length(self) -> int: ...
     def queue(self) -> list[tuple[int, TrackInfo]]: ...
-    def enqueue(self, uri: str) -> None: ...
+    def enqueue(self, uri: str, track: TrackInfo | None = None) -> None: ...
     def remove(self, tlid: int) -> None: ...
     def play(self) -> None: ...
     def next(self) -> None: ...
@@ -162,6 +162,13 @@ class PartyController:
         elif self.error and self.error != self._pool_error():
             self.error = self._pool_error()  # e.g. the login finished
             self.publish()
+
+        if not self.player_online():
+            # A remote player that went away: voting goes on, nothing plays.
+            self._track_changed(None)
+            if now - self._last_sync >= SYNC_EVERY_S:
+                self.publish()
+            return
 
         state = self.player.state()
         current = self.player.current()
@@ -326,7 +333,16 @@ class PartyController:
         winner = self.election.close(self._rng, carry)
         if winner is not None:
             uri = winner.track.uri
-            self.player.enqueue(uri)
+            try:
+                self.player.enqueue(uri, winner.track)
+            except Exception as e:
+                # E.g. a Spotify song on a remote player, or the player left.
+                logger.warning("Beat Ballot could not queue %s: %s", uri, e)
+                self.playback_error = f"Couldn't play “{winner.track.name}”: {e}"
+                self.pool.mark_played(uri)
+                self._open_round()
+                self.publish()
+                return None
             self.pool.mark_played(uri)
             self.up_next = winner.track
             self.last_winner = {
@@ -515,6 +531,11 @@ class PartyController:
             "last_winner": self.last_winner,
             "history": [self._track_dict(t) for t in self.history],
             "pool_size": len(self.pool),
+            "player": {
+                "online": self.player_online(),
+                "name": getattr(self.player, "player_name", None),
+                "remote": hasattr(self.player, "online"),
+            },
             "suggestions_only": not self.settings.playlists,
             "playlists": [
                 {
@@ -537,6 +558,9 @@ class PartyController:
             "error": self.error,
             "playback_error": self.playback_error,
         }
+
+    def player_online(self) -> bool:
+        return getattr(self.player, "online", True)
 
     def publish(self) -> None:
         self._last_sync = self._clock()

@@ -49,7 +49,7 @@ class FakePlayer:
     def queue(self):
         return list(self.tracklist)
 
-    def enqueue(self, uri: str) -> None:
+    def enqueue(self, uri: str, track=None) -> None:
         self.tracklist.append((self._next_tlid, self.library[uri]))
         self._next_tlid += 1
 

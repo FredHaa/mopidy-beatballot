@@ -13,10 +13,21 @@ song from their phones.
 - **Test mode** plays each song for 30 seconds and locks votes after 15.
 - Mobile-first web app with live updates, plus a big-screen **host view** with a
   QR code to join.
+- **Hub and players:** one server can host many parties, each playing on its own
+  small player (a Raspberry Pi with speakers) anywhere with internet.
 
-Guests join at `http://<pi>:6680/beatballot/` with a nickname and the party PIN.
-Joining with the host PIN also gives skip, pause, test mode, playlist switching
-and removing songs.
+Guests join with a nickname and the party PIN. Joining with the host PIN also
+gives skip, pause, test mode, playlist switching and removing songs.
+
+## Three ways to run it
+
+| Mode | What it does | Typical setup |
+| --- | --- | --- |
+| `standalone` (default) | One party; voting and music on the same machine | A Pi with speakers at home |
+| `hub` | Many parties; voting, search and logins on a server; plays nothing itself | A server behind your domain |
+| `player` | Plays what its hub sends | A Pi or PC with speakers at each venue |
+
+Choose with `BALLOT_MODE`. The same Docker image does all three.
 
 ## Voting rules
 
@@ -58,6 +69,54 @@ use and blocks Mopidy until someone approves it. Beat Ballot runs the device log
 itself instead: it shows the link only to the host (whoever opens it connects
 their account), saves the session where Mopidy-Tidal looks for it, and keeps
 playlists and search away from Tidal until then.
+
+## Hub and players
+
+The hub hosts parties at `https://<hub>/beatballot/r/<party>/`. Each party has its
+own name, guest and host PINs, QR code and ballot, and plays on one paired player.
+Players connect *out* to the hub over a WebSocket, so they work behind any router
+without port forwarding.
+
+**No accounts on the players.** The hub logs in to Tidal/SoundCloud once. For each
+song it resolves a short-lived stream URL (Tidal's are valid for about an hour)
+and sends only that to the party's player, which plays it through its own Mopidy.
+Spotify can't work this way (its plugin streams through the account itself), so a
+hub leaves Spotify songs out of search.
+
+**Set up the hub** (`compose.yaml` on your server):
+
+```sh
+BALLOT_MODE=hub
+BALLOT_HUB_PIN=…                 # the hub owner's PIN
+MUSIC_BACKENDS=tidal             # and/or soundcloud
+BALLOT_PUBLIC_URL=https://www.example.party/beatballot/
+# Optional: BALLOT_PIN/BALLOT_ADMIN_PIN/BALLOT_PARTY_NAME create a first party
+```
+
+Open `https://<hub>/beatballot/#/hub` and log in with the hub PIN to:
+- connect Tidal (one-time device login),
+- create parties (PINs are random unless you choose them),
+- **pair a player**: you get a one-time code (valid 15 minutes) and a ready
+  `docker run` command,
+- see each party's player (online or offline) and what's playing, rename parties,
+  change PINs (signs that party's guests out), unpair or delete.
+
+**Set up a player** (on the Pi, with the code from the hub page):
+
+```sh
+docker run -d --name beatballot-player --restart unless-stopped \
+  --device /dev/snd --group-add audio -v beatballot-player:/var/lib/mopidy \
+  -e BALLOT_MODE=player -e BALLOT_HUB_URL=https://www.example.party \
+  -e BALLOT_PAIR_CODE=ABCD-EFGH -e AUDIO_OUTPUT=alsasink \
+  ghcr.io/fredhaa/beatballot:latest
+```
+
+Or use `compose.player.yaml`. The player keeps its token in its volume, so the
+code is only needed once. If the player goes offline, voting carries on and the
+music resumes when it's back; guests see "Speaker offline" meanwhile.
+
+The landing page (`/beatballot/`) lists the parties, or goes straight to the only
+one. Hide a party from it in the hub page.
 
 ## Run on a Raspberry Pi 4 with Docker
 
@@ -118,6 +177,12 @@ commented volume in `compose.yaml`.
 
 | Key | Default | |
 | --- | --- | --- |
+| `mode` | `standalone` | `standalone`, `hub` or `player` |
+| `party_name` | `Beat Ballot` | Standalone: the party's name. Hub: the first party's name |
+| `hub_pin` | | Hub: the owner's PIN (manage parties, pair players, Tidal) |
+| `hub_url` | | Player: the hub's address |
+| `pair_code` | | Player: one-time code from the hub page |
+| `player_name` | hostname | Player: name shown on the hub |
 | `playlists` | | Playlist links or URIs for the random pool, comma or newline separated; empty = guest suggestions only |
 | `pin` | `1234` | Guest PIN |
 | `admin_pin` | | Host PIN; empty disables host controls |
@@ -127,7 +192,7 @@ commented volume in `compose.yaml`.
 | `carry_min_votes` | `2` | Votes a loser needs to carry over |
 | `max_suggestions_per_user` | `1` | Searched songs each guest may add per round |
 | `search_schemes` | | URI schemes searched for suggestions; empty = every enabled backend |
-| `public_url` | | Join URL shown as a QR code |
+| `public_url` | | Base URL of the app (e.g. `https://example.party/beatballot/`); party links and QR codes build on it |
 | `trusted_proxies` | | Reverse proxy IPs/CIDRs whose `X-Forwarded-For` is trusted (for per-guest PIN rate limiting) |
 | `test_mode` | `false` | Play `test_play_seconds`, lock at `test_lock_at` |
 | `test_play_seconds` | `30` | |
@@ -149,7 +214,8 @@ cd web && npm install && npm run build   # outputs to src/mopidy_beatballot/stat
 
 **UI without Mopidy:** `uv run python dev/demo.py` serves the real web app and
 vote engine against a simulated player with a few bot voters. Open
-<http://localhost:6680/beatballot/> (PIN `1234`, host PIN `9999`). For hot reload,
+<http://localhost:6680/beatballot/> (PIN `1234`, host PIN `9999`). With `--hub` it
+runs two parties and the hub page (`#/hub`, hub PIN `0000`). For hot reload,
 run `npm run dev` in `web/` at the same time. Vite proxies the API and WebSocket
 to port 6680 (override with `MOPIDY_URL`).
 
@@ -162,10 +228,14 @@ src/mopidy_beatballot/
   tidal_auth.py  Tidal device login without blocking Mopidy
   pool.py      random picks from all playlists, without repeats
   party.py     rounds, lock-in timing, test mode, queueing (Mopidy-free)
+  parties.py   one PartyController per party (room)
+  rooms.py     parties, PINs, player pairing codes and tokens
   player.py    adapter from Mopidy core to the small Player protocol
-  frontend.py  pykka actor + CoreListener; 250 ms ticker drives party.tick()
-  web.py       Tornado: PIN join, WebSocket, health, static app
-  hub.py       thread-safe broadcast of state to WebSocket clients
+  remote.py    hub side of a remote player; resolves songs to stream URLs
+  agent.py     player mode: connects to the hub and plays what it sends
+  frontend.py  pykka actor + CoreListener; 250 ms ticker drives the parties
+  web.py       Tornado: parties, hub owner API, player sockets, static app
+  hub.py       thread-safe broadcast of each party's state to its guests
 web/           Svelte 5 + Vite source
 dev/demo.py    simulated party for UI work
 ```

@@ -1,7 +1,15 @@
 // Connection to the Beat Ballot server and the shared reactive party state.
 
 const BASE = import.meta.env.BASE_URL
-const SESSION_KEY = 'beatballot.session'
+
+/** The party this page belongs to: /beatballot/r/<slug>/ */
+export const SLUG = location.pathname.slice(BASE.length).match(/^r\/([a-z0-9-]+)/)?.[1] ?? null
+const SESSION_KEY = `beatballot.session.${SLUG}`
+
+/** Where a party's guests join (QR code, links). */
+export function roomUrl(slug = SLUG) {
+  return `${location.origin}${BASE}r/${slug}/`
+}
 
 function loadSession() {
   try {
@@ -24,6 +32,7 @@ export const party = $state({
   session: loadSession(), // { token, user, pin }
   connected: false,
   state: null, // latest server snapshot
+  room: null, // { id, slug, name }
   receivedAt: 0, // performance.now() when `state` arrived
   pin: null, // guest PIN, sent to hosts so the big screen can show it
   toast: null,
@@ -98,6 +107,7 @@ function handle(msg) {
       break
     case 'hello':
       party.session = { ...party.session, user: msg.user }
+      if (msg.room) party.room = msg.room
       if (msg.pin) party.pin = msg.pin
       break
     case 'search_results':
@@ -141,7 +151,7 @@ export function search(q) {
 }
 
 export async function join(pin, name) {
-  const res = await fetch(`${BASE}api/join`, {
+  const res = await fetch(`${BASE}api/rooms/${SLUG}/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pin, name }),
@@ -168,6 +178,11 @@ export async function fetchLogins() {
 }
 
 export async function fetchInfo() {
-  const res = await fetch(`${BASE}api/info`)
+  const res = await fetch(`${BASE}api/rooms/${SLUG}/info`)
+  return res.json()
+}
+
+export async function fetchMode() {
+  const res = await fetch(`${BASE}api/mode`)
   return res.json()
 }
