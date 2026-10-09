@@ -154,3 +154,35 @@ def test_overview_lists_rooms_and_players():
     assert row["pin"] == room.pin
     assert "player_token_hash" not in row
     assert parties.overview("")[0]["join_url"] is None
+
+
+def test_hub_restart_mid_song_waits_for_the_players_song():
+    parties, store, _, clock = setup(remote=True)
+    room = store.create("A", playlists=["x:p"])
+    parties.start()
+    party = parties.party(room.id)
+    player = party.player
+    sent = []
+    player.attach(sent.append, "Pi")
+    # The player is still playing a song from before the hub restarted.
+    player.update(
+        {
+            "state": "playing",
+            "position_ms": 60_000,
+            "current": 1,
+            "queue": [1],
+            "ack": 0,
+        }
+    )
+    for _ in range(3):
+        clock.advance(5)
+        parties.tick()
+    assert sent == []  # no songs queued or skipped meanwhile
+    assert party.playback_error is None
+    # The old song ends: now the leader is locked in and played.
+    player.update(
+        {"state": "stopped", "position_ms": 0, "current": None, "queue": [], "ack": 0}
+    )
+    clock.advance(5)
+    parties.tick()
+    assert [c["cmd"] for c in sent][:2] == ["enqueue", "play"]

@@ -174,7 +174,11 @@ class PartyController:
         current = self.player.current()
         self._track_changed(current)
 
-        if state == STOPPED or current is None:
+        if current is None and state != STOPPED:
+            # A remote player is busy with a song this hub doesn't know (the
+            # hub restarted mid-song). Let it finish; then the queue plays.
+            pass
+        elif state == STOPPED or current is None:
             self._recover_stopped()
         elif state == PLAYING:
             tlid, track = current
