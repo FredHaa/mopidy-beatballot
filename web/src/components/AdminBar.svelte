@@ -70,6 +70,11 @@
           <Source source={src.id} /> {src.tracks} songs{#if src.paused}&nbsp;· paused, keeps failing{/if}
         </span>
       {/each}
+      {#if s.pool_discarded}
+        <span class="muted" title="Songs that lost a round join the random picks">
+          incl. {s.pool_discarded} from earlier ballots
+        </span>
+      {/if}
     </div>
   {/if}
 

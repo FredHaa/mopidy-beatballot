@@ -329,8 +329,19 @@ class PartyController:
     def lock(self) -> Candidate | None:
         """Close the round, queue the winner and open the next round."""
         counts = self.election.tally()
+        on_ballot = dict(self.election.candidates)
         carry = self.settings.carry_min_votes if self.settings.carry_over else None
         winner = self.election.close(self._rng, carry)
+        # Songs that lost and weren't carried over join the random pool.
+        dropped = [
+            c.track
+            for uri, c in on_ballot.items()
+            if uri not in self.election.candidates
+            and (winner is None or uri != winner.track.uri)
+        ]
+        self.pool.add_discarded(dropped)
+        # ...but not straight back onto the next ballot.
+        just_dropped = {t.uri for t in dropped}
         if winner is not None:
             uri = winner.track.uri
             try:
@@ -340,7 +351,7 @@ class PartyController:
                 logger.warning("Beat Ballot could not queue %s: %s", uri, e)
                 self.playback_error = f"Couldn't play “{winner.track.name}”: {e}"
                 self.pool.mark_played(uri)
-                self._open_round()
+                self._open_round(skip=just_dropped)
                 self.publish()
                 return None
             self.pool.mark_played(uri)
@@ -351,12 +362,12 @@ class PartyController:
                 "votes": counts.get(uri, 0),
             }
             logger.info("Beat Ballot round %d won by %s", self.election.round_id, uri)
-        self._open_round()
+        self._open_round(skip=just_dropped)
         self.publish()
         return winner
 
-    def _open_round(self, *, new_round: bool = True) -> None:
-        exclude = set(self.election.candidates)
+    def _open_round(self, *, new_round: bool = True, skip: Iterable[str] = ()) -> None:
+        exclude = set(self.election.candidates) | set(skip)
         if self.now is not None:
             exclude.add(self.now[1].uri)
         if self.up_next is not None:
@@ -533,6 +544,7 @@ class PartyController:
             "last_winner": self.last_winner,
             "history": [self._track_dict(t) for t in self.history],
             "pool_size": len(self.pool),
+            "pool_discarded": len(self.pool.discarded),
             "player": {
                 "online": self.player_online(),
                 "name": getattr(self.player, "player_name", None),

@@ -61,3 +61,31 @@ def test_skip_sources():
     pool = Pool(random.Random(0))
     pool.load([track("spotify:track:1"), track("tidal:track:1")])
     assert [t.uri for t in pool.pick(2, skip_sources={"spotify"})] == ["tidal:track:1"]
+
+
+def test_discarded_songs_join_the_pool_after_the_others():
+    pool = Pool(random.Random(0))
+    pool.load([track(u) for u in "abc"])
+    pool.add_discarded([track("x")])
+    assert {t.uri for t in pool.tracks} == {"a", "b", "c", "x"}
+    assert len(pool.discarded) == 1
+    # Shown already, so the other songs come up first...
+    assert {t.uri for t in pool.pick(3)} == {"a", "b", "c"}
+    for u in "abc":
+        pool.mark_played(u)
+    # ...and it's back once the pool has cycled through.
+    assert "x" in {t.uri for t in pool.pick(2)}
+
+
+def test_discarded_songs_survive_playlist_reloads_and_dedupe():
+    pool = Pool(random.Random(0))
+    pool.load([TrackInfo("spotify:track:1", "Dancing Queen", ("ABBA",))])
+    pool.add_discarded(
+        [
+            TrackInfo("tidal:track:9", "Dancing Queen", ("ABBA",)),  # same song
+            TrackInfo("tidal:track:7", "Toxic", ("Britney Spears",)),
+        ]
+    )
+    assert [t.uri for t in pool.tracks] == ["spotify:track:1", "tidal:track:7"]
+    pool.load([])  # playlists changed
+    assert [t.uri for t in pool.tracks] == ["tidal:track:7"]

@@ -14,18 +14,38 @@ def song_key(track: TrackInfo) -> tuple[str, str]:
 
 
 class Pool:
-    """Tracks from all playlists that random candidates are drawn from,
-    without repeats."""
+    """Songs random candidates are drawn from, without repeats: the playlists'
+    songs plus songs that dropped off the ballot (e.g. guests' suggestions)."""
 
     def __init__(self, rng: random.Random) -> None:
         self._rng = rng
+        self._playlist_tracks: list[TrackInfo] = []
+        self.discarded: dict[str, TrackInfo] = {}
         self.tracks: list[TrackInfo] = []
         self.played: set[str] = set()
 
     def load(self, tracks: Iterable[TrackInfo]) -> None:
+        """Replace the playlists' songs. Discarded songs stay."""
+        self._playlist_tracks = list(tracks)
+        self._rebuild()
+
+    def add_discarded(self, tracks: Iterable[TrackInfo]) -> None:
+        """Songs that dropped off the ballot become random picks too.
+
+        They count as already shown, so other songs come up first and these
+        come back once the pool has cycled through.
+        """
+        known_songs = {song_key(t) for t in self.tracks}
+        for track in tracks:
+            self.played.add(track.uri)
+            if track.uri not in self.discarded and song_key(track) not in known_songs:
+                self.discarded[track.uri] = track
+        self._rebuild()
+
+    def _rebuild(self) -> None:
         by_uri: dict[str, TrackInfo] = {}
         songs: set[tuple[str, str]] = set()
-        for track in tracks:
+        for track in [*self._playlist_tracks, *self.discarded.values()]:
             key = song_key(track)
             if track.uri in by_uri or key in songs:
                 continue  # Same song from another playlist or service.

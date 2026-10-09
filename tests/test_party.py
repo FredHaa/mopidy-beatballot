@@ -452,3 +452,76 @@ def test_adding_a_song_already_on_the_ballot_votes_for_it(party):
     on_ballot = sorted(uris(party))[1]
     party.suggest("u2", "Bo", party.election.candidates[on_ballot].track)
     assert party.election.tally()[on_ballot] == 1
+
+
+def test_songs_that_lose_join_the_random_pool(party, player):
+    extra = track("x")
+    player.library["x"] = extra
+    party.suggest("u1", "Ann", extra)
+    leader = next(u for u in uris(party) if u != "x")
+    party.vote("u2", "Bo", leader)
+    party.vote("u3", "Cy", leader)
+    at(party, player, SONG_MS - 20_000)  # leader wins; x had 1 vote: dropped
+    assert party.up_next.uri == leader
+    assert "x" in party.pool.discarded
+    assert "x" in {t.uri for t in party.pool.tracks}
+    assert party.snapshot()["pool_discarded"] == 1
+
+
+def test_host_removed_songs_do_not_join_the_pool(party, player):
+    extra = track("x")
+    player.library["x"] = extra
+    party.suggest("u1", "Ann", extra)
+    party.remove_candidate("x")
+    at(party, player, SONG_MS - 20_000)
+    assert "x" not in party.pool.discarded
+
+
+def test_suggestions_only_party_reuses_earlier_suggestions(clock, published):
+    player = FakePlayer([])
+    songs = {u: track(u) for u in ("s1", "s2", "s3")}
+    player.library.update(songs)
+    party = PartyController(
+        Settings(playlists=[], carry_over=False),
+        player,
+        published.append,
+        clock=clock,
+        rng=random.Random(1),
+    )
+    party.start()
+    party.suggest("u1", "Ann", songs["s1"])
+    clock.advance(5)
+    party.tick()  # s1 plays
+    party.suggest("u1", "Ann", songs["s2"])
+    party.suggest("u2", "Bo", songs["s3"])
+    party.vote("u3", "Cy", "s2")
+    at(party, player, SONG_MS - 20_000)  # s2 wins, s3 is discarded
+    assert party.up_next.uri == "s2"
+    assert [t.uri for t in party.pool.tracks] == ["s3"]
+    # Once the pool has cycled, earlier suggestions come back as random picks.
+    party.pool.played.clear()
+    party._open_round(new_round=False)
+    assert "s3" in party.election.candidates
+
+
+def test_a_dropped_song_skips_the_very_next_ballot(clock, published):
+    player = FakePlayer([])
+    songs = {u: track(u) for u in ("s1", "s2", "s3")}
+    player.library.update(songs)
+    party = PartyController(
+        Settings(playlists=[]),
+        player,
+        published.append,
+        clock=clock,
+        rng=random.Random(1),
+    )
+    party.start()
+    party.suggest("u1", "Ann", songs["s1"])
+    clock.advance(5)
+    party.tick()
+    party.suggest("u1", "Ann", songs["s2"])
+    party.suggest("u2", "Bo", songs["s3"])
+    party.vote("u3", "Cy", "s2")
+    at(party, player, SONG_MS - 20_000)  # s2 wins, s3 dropped
+    assert "s3" in party.pool.discarded
+    assert "s3" not in party.election.candidates  # not straight back
