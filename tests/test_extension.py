@@ -31,3 +31,8 @@ def test_settings_lock_window():
     s.test_mode = True
     assert s.lock_window_ms() == 15_000
     assert s.play_limit_ms() == 30_000
+
+
+def test_empty_pin_in_config_means_open_party():
+    assert Settings.from_config({"pin": None}).pin == ""
+    assert Settings.from_config({"pin": "1234"}).pin == "1234"

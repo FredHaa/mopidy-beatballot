@@ -238,6 +238,23 @@ class WebTest(AsyncHTTPTestCase):
         assert self.post("/api/player/pair", {"code": code}).code == 200
         assert self.post("/api/player/pair", {"code": code}).code == 403
 
+    def test_open_party_needs_no_pin(self):
+        self.store.update("r1", pin="")
+        info = json.loads(self.fetch("/api/rooms/party/info").body)
+        assert info["pin_required"] is False
+        res = self.join(pin="")
+        assert res.code == 200
+        assert json.loads(res.body)["user"]["admin"] is False
+        # Anything that isn't the host PIN just joins as a guest...
+        assert json.loads(self.join(pin="0000").body)["user"]["admin"] is False
+        # ...and the host PIN still makes you host.
+        assert json.loads(self.join(pin="9999").body)["user"]["admin"] is True
+
+    def test_locked_party_says_pin_required(self):
+        info = json.loads(self.fetch("/api/rooms/party/info").body)
+        assert info["pin_required"] is True
+        assert self.join(pin="").code == 403
+
     def test_health(self):
         assert json.loads(self.fetch("/api/health").body) == {"ok": True}
 
@@ -308,6 +325,11 @@ class HubWebTest(WebTest):
 
         rows = json.loads(self.fetch("/api/hub/rooms", headers=auth).body)["rooms"]
         assert {r["slug"] for r in rows} == {"party", "garden-party"}
+
+        open_room = json.loads(
+            self.post("/api/hub/rooms", {"name": "Open", "pin": ""}, owner).body
+        )["room"]
+        assert open_room["pin"] == ""
 
         res = self.fetch(f"/api/hub/rooms/{room['id']}", method="DELETE", headers=auth)
         assert res.code == 200

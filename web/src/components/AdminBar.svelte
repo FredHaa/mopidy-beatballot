@@ -8,7 +8,10 @@
   let tidal = $state(null)
 
   // Poll for a pending Tidal login so the host can approve it from here.
+  // On a hub that's the hub owner's job (on the hub page), not a party host's.
+  const onHub = $derived(s?.settings?.mode === 'hub')
   $effect(() => {
+    if (onHub) return
     let alive = true
     const poll = async () => {
       try {

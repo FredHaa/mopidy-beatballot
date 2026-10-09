@@ -184,7 +184,7 @@ commented volume in `compose.yaml`.
 | `pair_code` | | Player: one-time code from the hub page |
 | `player_name` | hostname | Player: name shown on the hub |
 | `playlists` | | Playlist links or URIs for the random pool, comma or newline separated; empty = guest suggestions only |
-| `pin` | `1234` | Guest PIN |
+| `pin` | `1234` | Guest PIN. Empty makes an open party: anyone with the link joins with just a name (the host PIN still unlocks host controls) |
 | `admin_pin` | | Host PIN; empty disables host controls |
 | `candidates` | `3` | Random songs per round |
 | `lock_before_end` | `20` | Seconds before the end of a song that voting locks |

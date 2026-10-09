@@ -91,8 +91,9 @@ class BallotFrontend(pykka.ThreadingActor, CoreListener):
         return Path(Extension.get_data_dir(self.config))
 
     def _bootstrap_room(self, store: RoomStore) -> None:
-        """A new hub starts with one party from the config's PINs, if given."""
-        if store.list() or not (self.settings.pin and self.settings.admin_pin):
+        """A new hub starts with one party from the config, if it has a host PIN.
+        Without a guest PIN that party is open."""
+        if store.list() or not self.settings.admin_pin:
             return
         room = store.create(
             self.settings.party_name or "Beat Ballot",

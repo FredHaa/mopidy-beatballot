@@ -7,7 +7,8 @@ set -eu
 # paired players.  player: plays what a hub sends.
 mode=$(printf '%s' "${BALLOT_MODE:-standalone}" | sed 's/#.*//' | tr 'A-Z' 'a-z' | tr -d ' ')
 case "$mode" in
-    standalone) : "${BALLOT_PIN:?Set BALLOT_PIN to the party PIN}" ;;
+    standalone)
+        [ -n "${BALLOT_PIN:-}" ] || echo "NOTE: no BALLOT_PIN: an open party, anyone with the link can join" >&2 ;;
     hub) : "${BALLOT_HUB_PIN:?Set BALLOT_HUB_PIN, the hub owner's PIN}" ;;
     player) : "${BALLOT_HUB_URL:?Set BALLOT_HUB_URL, e.g. https://www.klubhuset.party}" ;;
     *) echo "ERROR: BALLOT_MODE must be standalone, hub or player" >&2; exit 1 ;;

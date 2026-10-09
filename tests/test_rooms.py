@@ -100,3 +100,15 @@ def test_tokens_are_stored_hashed(tmp_path):
     assert "player_token_hash" not in room.private()
     assert room.private()["paired"] is True
     assert json.loads(path.read_text())["rooms"][0]["player_token_hash"]
+
+
+def test_open_party_without_guest_pin():
+    store = RoomStore()
+    room = store.create("Open", pin="")
+    assert room.pin == ""
+    assert room.admin_pin  # a host PIN is still made
+    random_room = store.create("Locked")  # no pin given: random
+    assert len(random_room.pin) == 4
+    store.update(random_room.id, pin="")  # can open it later
+    with pytest.raises(RoomError):
+        store.update(room.id, admin_pin="")  # hub parties need a host PIN

@@ -3,11 +3,18 @@
 
   let room = $state(null)
   let missing = $state(false)
+  let pinRequired = $state(true) // until we know otherwise
+  let host = $state(false) // open party: show the host PIN field
   $effect(() => {
     fetchInfo()
-      .then((i) => (i.room ? (room = i.room) : (missing = true)))
+      .then((i) => {
+        if (!i.room) return (missing = true)
+        room = i.room
+        pinRequired = i.pin_required !== false
+      })
       .catch(() => (missing = true))
   })
+  const showPin = $derived(pinRequired || host)
 
   let name = $state('')
   let pin = $state(new URLSearchParams(location.search).get('pin') ?? '')
@@ -42,14 +49,19 @@
       <span>Your name</span>
       <input class="field" bind:value={name} maxlength="24" autocomplete="nickname" placeholder="DJ Disco" required />
     </label>
-    <label>
-      <span>Party PIN</span>
-      <input class="field pin" bind:value={pin} inputmode="numeric" autocomplete="off" placeholder="••••" required />
-    </label>
+    {#if showPin}
+      <label>
+        <span>{pinRequired ? 'Party PIN' : 'Host PIN'}</span>
+        <input class="field pin" bind:value={pin} inputmode="numeric" autocomplete="off" placeholder="••••" required={pinRequired} />
+      </label>
+    {/if}
     {#if error}<p class="error">{error}</p>{/if}
-    <button class="btn" disabled={busy || !name.trim() || !pin.trim()}>
+    <button class="btn" disabled={busy || !name.trim() || (pinRequired && !pin.trim())}>
       {busy ? 'Joining…' : "Let's party"}
     </button>
+    {#if !pinRequired && !host}
+      <button type="button" class="host-link muted" onclick={() => (host = true)}>I'm the host</button>
+    {/if}
   </form>
 </main>
 
@@ -96,6 +108,11 @@
     margin-top: 0.5rem;
     padding: 1em;
     font-size: 1.05rem;
+  }
+  .host-link {
+    justify-self: center;
+    font-size: 0.85rem;
+    text-decoration: underline;
   }
   .error {
     margin: 0;

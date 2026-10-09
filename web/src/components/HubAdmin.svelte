@@ -23,6 +23,7 @@
   let editing = $state(null) // room id
   let draft = $state({})
   let newRoom = $state({ name: '', pin: '', admin_pin: '' })
+  let openParty = $state(false)
   let busy = $state(false)
 
   async function refresh() {
@@ -68,9 +69,11 @@
   function create(event) {
     event.preventDefault()
     const fields = Object.fromEntries(Object.entries(newRoom).filter(([, v]) => v.trim()))
+    if (openParty) fields.pin = '' // no guest PIN; empty otherwise means random
     run(async () => {
       await createRoom(fields)
       newRoom = { name: '', pin: '', admin_pin: '' }
+      openParty = false
     }, 'Party created')
   }
 
@@ -177,7 +180,7 @@
           {#if room.error}<p class="warn">{room.error}</p>{/if}
 
           <div class="pins">
-            <span>Guest PIN <strong>{room.pin}</strong></span>
+            <span>Guest PIN {#if room.pin}<strong>{room.pin}</strong>{:else}<strong>none</strong> (open party){/if}</span>
             <span>Host PIN <strong>{room.admin_pin}</strong></span>
             {#if !room.listed}<span class="muted">Hidden from landing page</span>{/if}
           </div>
@@ -195,7 +198,7 @@
             <form class="edit" onsubmit={(e) => saveEdit(e, room)}>
               <label>Name <input class="field" bind:value={draft.name} required /></label>
               <label>Link <input class="field" bind:value={draft.slug} pattern="[a-z0-9-]+" required /></label>
-              <label>Guest PIN <input class="field" bind:value={draft.pin} required /></label>
+              <label>Guest PIN <input class="field" bind:value={draft.pin} placeholder="None: anyone with the link can join" /></label>
               <label>Host PIN <input class="field" bind:value={draft.admin_pin} required /></label>
               <label class="check"><input type="checkbox" bind:checked={draft.listed} /> Show on the landing page</label>
               <p class="muted small">Changing a PIN signs everyone out of this party.</p>
@@ -225,9 +228,10 @@
       <h3>New party</h3>
       <input class="field" bind:value={newRoom.name} placeholder="Name, e.g. Klubhuset Friday" maxlength="60" required />
       <div class="two">
-        <input class="field" bind:value={newRoom.pin} placeholder="Guest PIN (random if empty)" />
+        <input class="field" bind:value={newRoom.pin} placeholder={openParty ? 'No guest PIN' : 'Guest PIN (random if empty)'} disabled={openParty} />
         <input class="field" bind:value={newRoom.admin_pin} placeholder="Host PIN (random if empty)" />
       </div>
+      <label class="check"><input type="checkbox" bind:checked={openParty} /> Open party: no guest PIN, anyone with the link can join</label>
       <button class="btn" disabled={busy || !newRoom.name.trim()}>Create party</button>
     </form>
   {/if}
@@ -387,6 +391,13 @@
     display: grid;
     gap: 0.3rem;
     font-size: 0.82rem;
+    color: var(--muted);
+  }
+  .create .check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
     color: var(--muted);
   }
   .edit .check {

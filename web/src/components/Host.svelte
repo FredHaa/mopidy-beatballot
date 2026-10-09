@@ -105,7 +105,8 @@
     <div class="join-text">
       <div class="eyebrow">Join the vote</div>
       <div class="url">{joinUrl.replace(/^https?:\/\//, '')}</div>
-      {#if pin}<div class="pin">PIN <strong>{pin}</strong></div>{/if}
+      {#if pin}<div class="pin">PIN <strong>{pin}</strong></div>
+      {:else if info.pin_required === false}<div class="pin">No PIN needed</div>{/if}
     </div>
   </aside>
 </div>

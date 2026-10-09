@@ -21,7 +21,7 @@ class Settings:
     pair_code: str = ""  # Player: one-time code from the hub page.
     player_name: str = ""
     playlists: list[str] = field(default_factory=list)
-    pin: str = "1234"
+    pin: str = ""  # Empty: an open party, no PIN needed to join.
     admin_pin: str = ""
     candidates: int = 3
     lock_before_end: int = 20

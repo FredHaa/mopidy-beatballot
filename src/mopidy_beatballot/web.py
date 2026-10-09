@@ -82,7 +82,8 @@ class Auth:
         self, room_id: str, pin: str, admin_pin: str, entered: str, name: str
     ) -> tuple[str, User] | None:
         admin = bool(admin_pin) and hmac.compare_digest(entered, admin_pin)
-        if not admin and not (pin and hmac.compare_digest(entered, pin)):
+        # No guest PIN: an open party, anyone with the link joins as a guest.
+        if not admin and pin and not hmac.compare_digest(entered, pin):
             return None
         user = User(uuid.uuid4().hex, name, admin)
         data = {"r": room_id, "id": user.id, "n": name, "a": admin}
@@ -346,6 +347,7 @@ class RoomInfoHandler(BaseHandler):
                 "room": room.public(),
                 "public_url": self.ctx.join_url(room),
                 "admin_enabled": bool(room.admin_pin),
+                "pin_required": bool(room.pin),
                 "mode": self.ctx.settings.mode,
             }
         )
@@ -555,9 +557,12 @@ class HubRoomsHandler(OwnerHandler):
         body = self.body()
         fields = {
             k: body[k]
-            for k in ("name", "slug", "pin", "admin_pin", "playlists")
+            for k in ("name", "slug", "admin_pin", "playlists")
             if body.get(k)
         }
+        # An empty guest PIN means an open party; no "pin" at all means random.
+        if body.get("pin") is not None:
+            fields["pin"] = str(body["pin"]).strip()
         self.write_json({"room": await self.call("create_room", fields)}, 201)
 
 

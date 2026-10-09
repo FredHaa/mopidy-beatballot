@@ -537,6 +537,7 @@ class PartyController:
                 "test_play_seconds": self.settings.test_play_seconds,
                 "test_lock_at": self.settings.test_lock_at,
                 "carry_over": self.settings.carry_over,
+                "mode": self.settings.mode,
                 "carry_min_votes": self.settings.carry_min_votes,
                 "max_suggestions_per_user": self.settings.max_suggestions_per_user,
                 "playlists": self.settings.playlists,

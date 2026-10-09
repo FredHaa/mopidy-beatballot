@@ -142,7 +142,8 @@ class RoomStore:
                 id=uuid.uuid4().hex[:12],
                 slug=slug,
                 name=name,
-                pin=pin or random_pin(4),
+                # None: a random PIN. "": an open party without a guest PIN.
+                pin=random_pin(4) if pin is None else pin,
                 admin_pin=admin_pin or random_pin(6),
                 playlists=list(playlists or []),
                 created_at=self._clock(),
@@ -207,11 +208,12 @@ class RoomStore:
 
     @staticmethod
     def _check_pins(pin: str, admin_pin: str) -> None:
-        if not (pin and pin.isalnum() and 4 <= len(pin) <= 12):
-            raise RoomError("The guest PIN needs 4-12 letters or digits")
+        # An empty guest PIN is allowed: an open party.
+        if pin and not (pin.isalnum() and 4 <= len(pin) <= 12):
+            raise RoomError("The guest PIN needs 4-12 letters or digits, or none")
         if not (admin_pin and admin_pin.isalnum() and 4 <= len(admin_pin) <= 32):
             raise RoomError("The host PIN needs 4-32 letters or digits")
-        if pin == admin_pin:
+        if pin and pin == admin_pin:
             raise RoomError("Guest and host PINs must differ")
 
     # --- player pairing ----------------------------------------------------
