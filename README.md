@@ -186,7 +186,8 @@ commented volume in `compose.yaml`.
 | `playlists` | | Playlist links or URIs for the random pool, comma or newline separated; empty = guest suggestions only |
 | `pin` | `1234` | Guest PIN. Empty makes an open party: anyone with the link joins with just a name (the host PIN still unlocks host controls) |
 | `admin_pin` | | Host PIN; empty disables host controls |
-| `candidates` | `3` | Random songs per round |
+| `candidates` | `3` | Random songs per round, 0-10; one of them is always a discarded song when there is one (host can change it live) |
+| `max_ballot` | `0` | Most songs on a ballot, counting random picks, carried-over songs and suggestions; 0 = no limit (host can change it live) |
 | `lock_before_end` | `20` | Seconds before the end of a song that voting locks |
 | `discarded_weight` | `3` | Songs that dropped off a ballot rejoin the random picks this many times as likely as playlist songs (1 = equally) |
 | `carry_over` | `true` | Losing songs with votes carry over (host can toggle live) |

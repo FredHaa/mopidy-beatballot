@@ -23,7 +23,8 @@ class Settings:
     playlists: list[str] = field(default_factory=list)
     pin: str = ""  # Empty: an open party, no PIN needed to join.
     admin_pin: str = ""
-    candidates: int = 3
+    candidates: int = 3  # Random picks per round (host can change).
+    max_ballot: int = 0  # Most songs on a ballot, all kinds; 0 = no limit.
     lock_before_end: int = 20
     carry_over: bool = True
     # How much likelier songs that dropped off a ballot are to be drawn again

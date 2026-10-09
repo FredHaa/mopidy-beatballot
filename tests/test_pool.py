@@ -81,7 +81,7 @@ def _draw_counts(weight, rounds=3000):
     pool.add_discarded([track("x")])
     counts = {}
     for _ in range(rounds):
-        [picked] = pool.pick(1)
+        [picked] = pool.pick(1, guarantee_discarded=False)  # weighting alone
         counts[picked.uri] = counts.get(picked.uri, 0) + 1
     playlist_avg = sum(v for k, v in counts.items() if k != "x") / 9
     return counts["x"] / playlist_avg
@@ -104,3 +104,25 @@ def test_discarded_songs_survive_playlist_reloads_and_dedupe():
     assert [t.uri for t in pool.tracks] == ["spotify:track:1", "tidal:track:7"]
     pool.load([])  # playlists changed
     assert [t.uri for t in pool.tracks] == ["tidal:track:7"]
+
+
+def test_a_discarded_song_is_always_drawn_when_available():
+    for seed in range(30):
+        pool = Pool(random.Random(seed))
+        pool.load([track(f"p{i}") for i in range(20)])
+        pool.add_discarded([track("x"), track("y")])
+        picks = [t.uri for t in pool.pick(3)]
+        assert len(picks) == 3
+        assert {"x", "y"} & set(picks)
+    # Not if none is eligible (e.g. just dropped off the ballot).
+    picks = [t.uri for t in pool.pick(3, exclude={"x", "y"})]
+    assert not {"x", "y"} & set(picks)
+    # And it can be turned off.
+    pool = Pool(random.Random(1), discarded_weight=1)
+    pool.load([track(f"p{i}") for i in range(20)])
+    pool.add_discarded([track("x")])
+    hits = sum(
+        "x" in {t.uri for t in pool.pick(1, guarantee_discarded=False)}
+        for _ in range(200)
+    )
+    assert hits < 40  # ~1 in 21

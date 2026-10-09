@@ -29,6 +29,15 @@
     }
   })
 
+  function setNumber(action, input, min, max) {
+    const value = Math.round(Number(input.value))
+    if (!Number.isFinite(value) || value < min || value > max) {
+      input.value = String(s?.settings[action] ?? min)
+      return
+    }
+    admin(action, value)
+  }
+
   function savePlaylists(event) {
     event.preventDefault()
     admin('playlists', playlists ?? '')
@@ -63,6 +72,31 @@
     <label class="toggle" title="Losing songs with {s?.settings.carry_min_votes ?? 2}+ votes stay in the next round, votes kept">
       <input type="checkbox" checked={s?.settings.carry_over} onchange={(e) => admin('carry_over', e.currentTarget.checked)} />
       <span>Carry over voted songs</span>
+    </label>
+  </div>
+
+  <div class="numbers">
+    <label>
+      <span>Random picks per round</span>
+      <input
+        class="field"
+        type="number"
+        min="0"
+        max="10"
+        value={s?.settings.candidates ?? 3}
+        onchange={(e) => setNumber('candidates', e.currentTarget, 0, 10)}
+      />
+    </label>
+    <label>
+      <span>Max songs on the ballot <small class="muted">(0 = no limit)</small></span>
+      <input
+        class="field"
+        type="number"
+        min="0"
+        max="50"
+        value={s?.settings.max_ballot ?? 0}
+        onchange={(e) => setNumber('max_ballot', e.currentTarget, 0, 50)}
+      />
     </label>
   </div>
 
@@ -157,6 +191,22 @@
     accent-color: var(--accent);
     width: 1.1rem;
     height: 1.1rem;
+  }
+  .numbers {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: 0.6rem;
+    align-items: end; /* inputs line up when a label wraps */
+  }
+  .numbers label {
+    display: grid;
+    gap: 0.3rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+  .numbers .field {
+    max-width: 7rem;
+    padding: 0.55em 0.8em;
   }
   .sources {
     display: flex;

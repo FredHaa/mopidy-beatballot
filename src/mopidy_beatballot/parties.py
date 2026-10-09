@@ -29,6 +29,8 @@ def room_settings(base: Settings, room: Room) -> Settings:
         playlists=list(room.playlists),
         test_mode=room.test_mode,
         carry_over=room.carry_over,
+        candidates=base.candidates if room.candidates is None else room.candidates,
+        max_ballot=base.max_ballot if room.max_ballot is None else room.max_ballot,
         search_schemes=list(base.search_schemes),
         trusted_proxies=list(base.trusted_proxies),
     )
@@ -116,6 +118,12 @@ class Parties:
             case "carry_over":
                 party.set_carry_over(bool(value))
                 self.store.update(room_id, carry_over=bool(value))
+            case "candidates":
+                party.set_candidates(int(value))
+                self.store.update(room_id, candidates=party.settings.candidates)
+            case "max_ballot":
+                party.set_max_ballot(int(value))
+                self.store.update(room_id, max_ballot=party.settings.max_ballot)
             case "remove":
                 party.remove_candidate(str(value))
             case "playlists":

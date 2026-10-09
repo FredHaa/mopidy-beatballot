@@ -525,3 +525,84 @@ def test_a_dropped_song_skips_the_very_next_ballot(clock, published):
     at(party, player, SONG_MS - 20_000)  # s2 wins, s3 dropped
     assert "s3" in party.pool.discarded
     assert "s3" not in party.election.candidates  # not straight back
+
+
+def test_host_sets_random_picks_per_round(party, player):
+    assert len(party.election.candidates) == 3
+    party.set_candidates(5)  # tops up this round
+    assert len(party.election.candidates) == 5
+    assert party.snapshot()["settings"]["candidates"] == 5
+    party.set_candidates(1)  # fewer: nobody's song is removed now...
+    assert len(party.election.candidates) == 5
+    at(party, player, SONG_MS - 20_000)  # ...but the next round has 1
+    assert len(party.election.candidates) == 1
+    with pytest.raises(VoteError):
+        party.set_candidates(11)
+
+
+def test_ballot_cap_limits_picks_and_suggestions(party, player):
+    party.set_candidates(5)
+    party.set_max_ballot(4)
+    assert party.snapshot()["settings"]["max_ballot"] == 4
+    at(party, player, SONG_MS - 20_000)  # next round: 5 wanted, capped at 4
+    assert len(party.election.candidates) == 4
+    extra = track("x")
+    player.library["x"] = extra
+    with pytest.raises(VoteError, match="ballot is full"):
+        party.suggest("u1", "Ann", extra)
+    # A song already on the ballot can still be "added": it's a vote.
+    on_ballot = next(iter(party.election.candidates))
+    party.suggest("u1", "Ann", party.election.candidates[on_ballot].track)
+    assert party.election.tally()[on_ballot] == 1
+    party.set_max_ballot(0)  # no limit
+    party.suggest("u2", "Bo", extra)
+    assert "x" in party.election.candidates
+
+
+def test_carry_over_beyond_the_cap_keeps_the_most_voted(party, player):
+    party.set_candidates(5)
+    a, b, c, d, e = sorted(uris(party))
+    votes = {a: 5, b: 4, c: 3, d: 2}  # a wins; b, c, d would all carry over
+    voter = 0
+    for uri, n in votes.items():
+        for _ in range(n):
+            voter += 1
+            party.vote(f"u{voter}", f"U{voter}", uri)
+    party.set_candidates(0)  # only carried songs on the next ballot
+    party.set_max_ballot(2)
+    at(party, player, SONG_MS - 20_000)
+    assert party.up_next.uri == a
+    assert set(party.election.candidates) == {b, c}  # d has fewest: trimmed
+    assert d in party.pool.discarded or d in party.pool.played
+
+
+def test_ballot_settings_persist_per_party():
+    from mopidy_beatballot.parties import Parties
+    from mopidy_beatballot.rooms import RoomStore
+
+    tracks = [track(f"t{i}", SONG_MS) for i in range(12)]
+    store = RoomStore()
+    room = store.create("A", playlists=["x:p"])
+    parties = Parties(
+        Settings(),
+        store,
+        lambda r: FakePlayer(tracks),
+        lambda *a: None,
+        rng=random.Random(1),
+    )
+    parties.start()
+    parties.admin(room.id, "candidates", 4)
+    parties.admin(room.id, "max_ballot", 6)
+    saved = store.get(room.id)
+    assert (saved.candidates, saved.max_ballot) == (4, 6)
+    # A restart picks them up again.
+    again = Parties(
+        Settings(),
+        store,
+        lambda r: FakePlayer(tracks),
+        lambda *a: None,
+        rng=random.Random(1),
+    )
+    again.start()
+    assert again.party(room.id).settings.candidates == 4
+    assert again.party(room.id).settings.max_ballot == 6

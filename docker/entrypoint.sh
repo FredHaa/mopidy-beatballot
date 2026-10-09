@@ -122,6 +122,7 @@ carry_over = ${BALLOT_CARRY_OVER:-true}
 discarded_weight = ${BALLOT_DISCARDED_WEIGHT:-3}
 lock_before_end = ${BALLOT_LOCK_BEFORE_END:-20}
 candidates = ${BALLOT_CANDIDATES:-3}
+max_ballot = ${BALLOT_MAX_BALLOT:-0}
 CONF
 
 configs="$conf"

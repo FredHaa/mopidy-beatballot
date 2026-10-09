@@ -336,6 +336,7 @@ class PartyController:
         on_ballot = dict(self.election.candidates)
         carry = self.settings.carry_min_votes if self.settings.carry_over else None
         winner = self.election.close(self._rng, carry)
+        self._trim_to_cap()
         # Songs that lost and weren't carried over join the random pool.
         dropped = [
             c.track
@@ -370,6 +371,19 @@ class PartyController:
         self.publish()
         return winner
 
+    def _trim_to_cap(self) -> None:
+        """More carried-over songs than the ballot cap: keep the most-voted."""
+        cap = self.settings.max_ballot
+        if not cap or len(self.election.candidates) <= cap:
+            return
+        counts = self.election.tally()
+        ranked = sorted(
+            self.election.candidates.values(),
+            key=lambda c: (-counts[c.track.uri], c.added_at),
+        )
+        for candidate in ranked[cap:]:
+            self.election.remove(candidate.track.uri)
+
     def _open_round(self, *, new_round: bool = True, skip: Iterable[str] = ()) -> None:
         exclude = set(self.election.candidates) | set(skip)
         if self.now is not None:
@@ -382,6 +396,9 @@ class PartyController:
             if c.origin == PLAYLIST and not c.carried
         )
         wanted = max(0, self.settings.candidates - picks)
+        if self.settings.max_ballot:
+            room_left = self.settings.max_ballot - len(self.election.candidates)
+            wanted = min(wanted, max(0, room_left))
         fresh = self.pool.pick(wanted, exclude, self.active_paused_sources())
         if not fresh and wanted:
             fresh = self.pool.pick(wanted, exclude)  # Better than an empty ballot.
@@ -421,6 +438,13 @@ class PartyController:
         }
         if track.uri in blocked:
             raise VoteError("That song is already playing or up next")
+        cap = self.settings.max_ballot
+        if (
+            cap
+            and track.uri not in self.election.candidates
+            and len(self.election.candidates) >= cap
+        ):
+            raise VoteError(f"The ballot is full ({cap} songs): vote for one of these")
         if track.image:
             self.images.setdefault(track.uri, track.image)
         self.election.suggest(user_id, track, self.settings.max_suggestions_per_user)
@@ -450,6 +474,23 @@ class PartyController:
             self.player.resume()
         else:
             self.player.play()
+        self.publish()
+
+    def set_candidates(self, count: int) -> None:
+        """Random picks per round. More now tops up this round; fewer applies
+        from the next round (nobody's vote is removed)."""
+        if not 0 <= count <= 10:
+            raise VoteError("Random picks per round must be 0-10")
+        self.settings.candidates = count
+        self._open_round(new_round=False)
+        self.publish()
+
+    def set_max_ballot(self, cap: int) -> None:
+        """Most songs on a ballot (0 = no limit). Applies from the next round
+        and to new suggestions; songs already on the ballot stay."""
+        if not 0 <= cap <= 50:
+            raise VoteError("The ballot limit must be 0-50 songs")
+        self.settings.max_ballot = cap
         self.publish()
 
     def set_carry_over(self, enabled: bool) -> None:
@@ -538,6 +579,8 @@ class PartyController:
                 "test_lock_at": self.settings.test_lock_at,
                 "carry_over": self.settings.carry_over,
                 "mode": self.settings.mode,
+                "candidates": self.settings.candidates,
+                "max_ballot": self.settings.max_ballot,
                 "carry_min_votes": self.settings.carry_min_votes,
                 "max_suggestions_per_user": self.settings.max_suggestions_per_user,
                 "playlists": self.settings.playlists,

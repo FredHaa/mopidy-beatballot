@@ -41,6 +41,8 @@ class Room:
     test_mode: bool = False
     carry_over: bool = True
     listed: bool = True  # Shown on the hub's landing page.
+    candidates: int | None = None  # Random picks per round; None = default.
+    max_ballot: int | None = None  # Ballot size cap; None = default, 0 = none.
     player_token_hash: str | None = None
     player_name: str | None = None
     created_at: float = 0.0
@@ -163,6 +165,8 @@ class RoomStore:
             "test_mode",
             "carry_over",
             "listed",
+            "candidates",
+            "max_ballot",
         }
         with self._lock:
             room = self._require(room_id)

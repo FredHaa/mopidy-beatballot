@@ -77,7 +77,12 @@ class Pool:
         n: int,
         exclude: Iterable[str] = (),
         skip_sources: Iterable[str] = (),
+        *,
+        guarantee_discarded: bool = True,
     ) -> list[TrackInfo]:
+        """n random songs. With ``guarantee_discarded``, one of them is a
+        discarded song whenever one is available; the rest are drawn with
+        discarded songs weighted up."""
         excluded = set(exclude)
         skipped = set(skip_sources)
         usable = [
@@ -91,7 +96,13 @@ class Pool:
             # candidates already on the table.
             self.played -= {t.uri for t in usable}
             available = usable
-        return self._weighted_sample(available, n)
+        picks: list[TrackInfo] = []
+        if guarantee_discarded and n > 0:
+            discarded = [t for t in available if t.uri in self.discarded]
+            if discarded:
+                picks.append(self._rng.choice(discarded))
+                available = [t for t in available if t.uri != picks[0].uri]
+        return picks + self._weighted_sample(available, n - len(picks))
 
     def _weighted_sample(self, tracks: list[TrackInfo], n: int) -> list[TrackInfo]:
         """n songs without replacement, discarded songs weighted up.
