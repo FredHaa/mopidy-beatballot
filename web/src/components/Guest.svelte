@@ -5,7 +5,7 @@
   import LockStatus from './LockStatus.svelte'
   import NowPlaying from './NowPlaying.svelte'
   import Search from './Search.svelte'
-  import { leave, party } from '../lib/party.svelte.js'
+  import { leave, party, shareInvite } from '../lib/party.svelte.js'
   import { artists, initials, userColor } from '../lib/format.js'
 
   let searching = $state(false)
@@ -15,9 +15,13 @@
 
 <div class="page">
   <header>
-    <div class="brand">🗳️ <span class="gradient-text">Beat Ballot</span></div>
+    <div class="brand">🗳️ <span class="gradient-text brand-text">Beat Ballot</span></div>
     {#if s?.test_mode}<span class="badge test">TEST MODE</span>{/if}
     <span class="conn" class:on={party.connected} title={party.connected ? 'Connected' : 'Reconnecting…'}></span>
+    <button class="invite" onclick={shareInvite} title="Invite friends: share the link and PIN" aria-label="Invite friends">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg>
+      <span class="invite-label">Invite</span>
+    </button>
     <button class="me" onclick={() => confirm('Leave the party on this device?') && leave()} title="Leave">
       <span class="avatar" style:background={userColor(me.id)}>{initials(me.name)}</span>
     </button>
@@ -58,6 +62,9 @@
 
     <div class="area extras">
       {#if me.admin}<AdminBar />{/if}
+      <button class="btn ghost invite-wide" onclick={shareInvite}>
+        Invite friends: share the link and PIN
+      </button>
       <a class="host-link muted" href="#/host">Open big-screen view ↗</a>
     </div>
   {/if}
@@ -111,6 +118,42 @@
   .conn.on {
     background: var(--good);
     box-shadow: 0 0 8px var(--good);
+  }
+  .invite {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: 999px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    font-size: 0.82rem;
+    font-weight: 700;
+  }
+  .brand,
+  .badge.test {
+    white-space: nowrap;
+  }
+  /* Narrow phones: the icon is enough; the wide button below has the text. */
+  @media (max-width: 420px) {
+    .invite {
+      padding: 0.45rem;
+    }
+    .invite-label {
+      display: none;
+    }
+  }
+  @media (max-width: 360px) {
+    .brand-text {
+      display: none;
+    }
+  }
+  .invite:active {
+    transform: scale(0.96);
+  }
+  .invite-wide {
+    justify-self: center;
+    font-size: 0.9rem;
   }
   .avatar {
     display: grid;

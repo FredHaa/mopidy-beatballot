@@ -37,7 +37,7 @@
 
   function add(track) {
     if (suggest(track.uri)) {
-      toast(`Added “${track.name}” to the vote — now vote for it!`, 'ok')
+      toast(`Added “${track.name}” with your vote`, 'ok')
       onclose()
     }
   }

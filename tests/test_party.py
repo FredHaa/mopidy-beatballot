@@ -431,3 +431,24 @@ def test_host_can_turn_carry_over_off(party, player):
     assert party.up_next.uri == a
     assert b not in uris(party)
     assert party.election.ballots == {}
+
+
+def test_adding_a_song_votes_for_it(party, player):
+    first = sorted(uris(party))[0]
+    party.vote("u1", "Ann", first)
+    extra = track("x")
+    player.library["x"] = extra
+    party.suggest("u1", "Ann", extra)
+    # The suggester's one vote moved to the song they added.
+    assert party.election.tally()["x"] == 1
+    assert party.election.tally()[first] == 0
+    snap = party.snapshot()
+    added = next(c for c in snap["round"]["candidates"] if c["track"]["uri"] == "x")
+    assert added["voters"] == [{"id": "u1", "name": "Ann"}]
+    assert added["leading"] is True
+
+
+def test_adding_a_song_already_on_the_ballot_votes_for_it(party):
+    on_ballot = sorted(uris(party))[1]
+    party.suggest("u2", "Bo", party.election.candidates[on_ballot].track)
+    assert party.election.tally()[on_ballot] == 1

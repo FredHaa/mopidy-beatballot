@@ -409,6 +409,8 @@ class PartyController:
         if track.image:
             self.images.setdefault(track.uri, track.image)
         self.election.suggest(user_id, track, self.settings.max_suggestions_per_user)
+        # A song you add starts with your vote (moving it from any other song).
+        self.election.vote(user_id, track.uri)
         self._fetch_images([track.uri])
         self.publish()
 

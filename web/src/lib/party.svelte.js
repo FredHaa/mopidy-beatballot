@@ -159,6 +159,8 @@ export async function join(pin, name) {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error ?? 'Could not join')
   party.session = { token: data.token, user: data.user, pin: data.user.admin ? null : pin }
+  // Joined from a shared link: don't leave the PIN in the address bar.
+  if (location.search.includes('pin=')) history.replaceState(null, '', location.pathname + location.hash)
   saveSession(party.session)
   connect()
 }
@@ -175,6 +177,50 @@ export async function fetchLogins() {
   const token = encodeURIComponent(party.session?.token ?? '')
   const res = await fetch(`${BASE}api/logins?token=${token}`)
   return res.ok ? res.json() : {}
+}
+
+/** The invite: the party link with the guest PIN filled in. Hosts get the
+ * guest PIN from the server; guests share the PIN they joined with. */
+export function invite() {
+  const pin = party.pin ?? party.session?.pin
+  const name = party.room?.name ?? 'the party'
+  const url = roomUrl() + (pin ? `?pin=${encodeURIComponent(pin)}` : '')
+  const text = `🗳️ Vote on the music at ${name}!` + (pin ? ` PIN: ${pin}` : '')
+  const title = name === 'Beat Ballot' ? name : `Beat Ballot · ${name}`
+  return { title, text, url }
+}
+
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text)
+  // Plain http (a Pi on the LAN): the old-fashioned way.
+  const area = document.createElement('textarea')
+  area.value = text
+  area.style.position = 'fixed'
+  area.style.opacity = '0'
+  document.body.append(area)
+  area.select()
+  const ok = document.execCommand('copy')
+  area.remove()
+  return ok ? Promise.resolve() : Promise.reject(new Error('copy failed'))
+}
+
+/** Share the invite via the phone's share sheet (Messenger, SMS, …), or copy it. */
+export async function shareInvite() {
+  const data = invite()
+  if (navigator.share) {
+    try {
+      await navigator.share(data)
+      return
+    } catch (e) {
+      if (e.name === 'AbortError') return // Closed the share sheet.
+    }
+  }
+  try {
+    await copyText(`${data.text}\n${data.url}`)
+    toast('Invite copied: paste it into a message', 'ok')
+  } catch {
+    toast(`Share this link: ${data.url}`, 'ok')
+  }
 }
 
 export async function fetchInfo() {
