@@ -42,7 +42,7 @@ def test_picks_randomly_from_all_playlists():
     tracks += [track(f"tidal:track:{i}") for i in range(10)]
     pool.load(tracks)
     picked = set()
-    for _ in range(30):
+    for _ in range(100):
         picked.update(t.uri for t in pool.pick(3))
         pool.played.clear()
     # Every song can come up, and no service gets a guaranteed slot.
@@ -63,18 +63,33 @@ def test_skip_sources():
     assert [t.uri for t in pool.pick(2, skip_sources={"spotify"})] == ["tidal:track:1"]
 
 
-def test_discarded_songs_join_the_pool_after_the_others():
+def test_discarded_songs_join_the_pool_unplayed():
     pool = Pool(random.Random(0))
     pool.load([track(u) for u in "abc"])
-    pool.add_discarded([track("x")])
+    pool.add_discarded([track("x"), track("a")])  # "a" is a playlist song
     assert {t.uri for t in pool.tracks} == {"a", "b", "c", "x"}
-    assert len(pool.discarded) == 1
-    # Shown already, so the other songs come up first...
-    assert {t.uri for t in pool.pick(3)} == {"a", "b", "c"}
-    for u in "abc":
-        pool.mark_played(u)
-    # ...and it's back once the pool has cycled through.
-    assert "x" in {t.uri for t in pool.pick(2)}
+    assert set(pool.discarded) == {"x"}
+    # A discarded suggestion can be drawn right away; a playlist song that
+    # lost counts as shown, so the rest of the playlist comes first.
+    assert "x" not in pool.played
+    assert "a" in pool.played
+
+
+def _draw_counts(weight, rounds=3000):
+    pool = Pool(random.Random(7), discarded_weight=weight)
+    pool.load([track(f"p{i}") for i in range(9)])
+    pool.add_discarded([track("x")])
+    counts = {}
+    for _ in range(rounds):
+        [picked] = pool.pick(1)
+        counts[picked.uri] = counts.get(picked.uri, 0) + 1
+    playlist_avg = sum(v for k, v in counts.items() if k != "x") / 9
+    return counts["x"] / playlist_avg
+
+
+def test_discarded_songs_are_more_likely_to_be_drawn():
+    assert 2.4 < _draw_counts(3) < 3.6  # about 3x a playlist song
+    assert 0.75 < _draw_counts(1) < 1.3  # weight 1: equally likely
 
 
 def test_discarded_songs_survive_playlist_reloads_and_dedupe():

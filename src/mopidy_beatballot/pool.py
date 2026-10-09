@@ -17,8 +17,10 @@ class Pool:
     """Songs random candidates are drawn from, without repeats: the playlists'
     songs plus songs that dropped off the ballot (e.g. guests' suggestions)."""
 
-    def __init__(self, rng: random.Random) -> None:
+    def __init__(self, rng: random.Random, discarded_weight: float = 3) -> None:
         self._rng = rng
+        # How much likelier a discarded song is to be drawn than a playlist song.
+        self.discarded_weight = discarded_weight
         self._playlist_tracks: list[TrackInfo] = []
         self.discarded: dict[str, TrackInfo] = {}
         self.tracks: list[TrackInfo] = []
@@ -30,15 +32,18 @@ class Pool:
         self._rebuild()
 
     def add_discarded(self, tracks: Iterable[TrackInfo]) -> None:
-        """Songs that dropped off the ballot become random picks too.
-
-        They count as already shown, so other songs come up first and these
-        come back once the pool has cycled through.
+        """Songs that dropped off the ballot (e.g. guests' suggestions) become
+        random picks too, drawn ``discarded_weight`` times as often as playlist
+        songs. Playlist songs that lost just count as shown, so the rest of the
+        playlist comes up first.
         """
         known_songs = {song_key(t) for t in self.tracks}
         for track in tracks:
-            self.played.add(track.uri)
-            if track.uri not in self.discarded and song_key(track) not in known_songs:
+            if track.uri in self.discarded:
+                continue  # Lost again: stays in, as likely as before.
+            if song_key(track) in known_songs:
+                self.played.add(track.uri)  # A playlist song.
+            else:
                 self.discarded[track.uri] = track
         self._rebuild()
 
@@ -86,4 +91,17 @@ class Pool:
             # candidates already on the table.
             self.played -= {t.uri for t in usable}
             available = usable
-        return self._rng.sample(available, min(n, len(available)))
+        return self._weighted_sample(available, n)
+
+    def _weighted_sample(self, tracks: list[TrackInfo], n: int) -> list[TrackInfo]:
+        """n songs without replacement, discarded songs weighted up.
+
+        Each song gets the key random() ** (1 / weight) and the highest keys
+        win (Efraimidis-Spirakis), so a weight-3 song is drawn 3x as often.
+        """
+
+        def key(track: TrackInfo) -> float:
+            weight = self.discarded_weight if track.uri in self.discarded else 1
+            return self._rng.random() ** (1 / max(weight, 1e-9))
+
+        return sorted(tracks, key=key, reverse=True)[: max(0, n)]

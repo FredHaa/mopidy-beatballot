@@ -188,6 +188,7 @@ commented volume in `compose.yaml`.
 | `admin_pin` | | Host PIN; empty disables host controls |
 | `candidates` | `3` | Random songs per round |
 | `lock_before_end` | `20` | Seconds before the end of a song that voting locks |
+| `discarded_weight` | `3` | Songs that dropped off a ballot rejoin the random picks this many times as likely as playlist songs (1 = equally) |
 | `carry_over` | `true` | Losing songs with votes carry over (host can toggle live) |
 | `carry_min_votes` | `2` | Votes a loser needs to carry over |
 | `max_suggestions_per_user` | `1` | Searched songs each guest may add per round |

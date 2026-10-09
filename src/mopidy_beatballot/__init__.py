@@ -36,6 +36,7 @@ class Extension(ext.Extension):
         schema["candidates"] = config.Integer(minimum=1, maximum=10)
         schema["lock_before_end"] = config.Integer(minimum=1)
         schema["carry_over"] = config.Boolean()
+        schema["discarded_weight"] = config.Integer(minimum=1, maximum=20)
         schema["carry_min_votes"] = config.Integer(minimum=1)
         schema["max_suggestions_per_user"] = config.Integer(minimum=0)
         schema["search_schemes"] = config.List(optional=True)

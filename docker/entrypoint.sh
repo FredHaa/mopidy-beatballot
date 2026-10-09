@@ -119,6 +119,7 @@ public_url = ${BALLOT_PUBLIC_URL:-}
 trusted_proxies = ${BALLOT_TRUSTED_PROXIES:-}
 test_mode = ${BALLOT_TEST_MODE:-false}
 carry_over = ${BALLOT_CARRY_OVER:-true}
+discarded_weight = ${BALLOT_DISCARDED_WEIGHT:-3}
 lock_before_end = ${BALLOT_LOCK_BEFORE_END:-20}
 candidates = ${BALLOT_CANDIDATES:-3}
 CONF

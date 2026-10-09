@@ -26,6 +26,9 @@ class Settings:
     candidates: int = 3
     lock_before_end: int = 20
     carry_over: bool = True
+    # How much likelier songs that dropped off a ballot are to be drawn again
+    # than playlist songs (1 = equally likely).
+    discarded_weight: int = 3
     carry_min_votes: int = 2
     max_suggestions_per_user: int = 1
     # Mopidy URI schemes searched for suggestions; empty searches every backend.

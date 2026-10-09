@@ -75,7 +75,7 @@ class PartyController:
         self._rng = rng or random.Random()
         self._login_pending = login_pending
         self.election = Election(clock)
-        self.pool = Pool(self._rng)
+        self.pool = Pool(self._rng, settings.discarded_weight)
         self.users: dict[str, str] = {}
         self.images: dict[str, str] = {}
         self.history: deque[TrackInfo] = deque(maxlen=12)
