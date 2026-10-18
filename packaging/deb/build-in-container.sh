@@ -46,7 +46,7 @@ Beat Ballot player $VERSION, https://github.com/FredHaa/mopidy-beatballot
 Licensed under the Apache License 2.0. Bundled Python packages keep their own licenses.
 EOF
 
-SIZE=$(du -sk "$STAGE" | cut -f1)
+SIZE=$(du -sk --apparent-size "$STAGE" | cut -f1)  # block counts vary (e.g. under QEMU)
 cat > "$STAGE/DEBIAN/control" <<EOF
 Package: beatballot-player
 Version: $VERSION
