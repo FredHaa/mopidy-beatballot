@@ -406,6 +406,10 @@ class HealthHandler(BaseHandler):
 class SocketHandler(tornado.websocket.WebSocketHandler):
     """A guest's or host's live connection to one party."""
 
+    @property
+    def ping_interval(self) -> float:
+        return 25  # Drops phones that went away without closing.
+
     def initialize(self, ctx: Context) -> None:
         self.ctx = ctx
         self.user: User | None = None
@@ -620,24 +624,72 @@ class PlayerPairHandler(BaseHandler):
         self.write_json({"token": token, "room": room.public()})
 
 
+# Player socket close codes, also read by the player agent and browser player.
+CLOSE_UNKNOWN = 4001  # Not (or no longer) a player of this party.
+CLOSE_DISPLACED = 4002  # A browser took over as the party's speaker.
+CLOSE_BUSY = 4003  # Another player is playing this party.
+
+
 class PlayerSocketHandler(tornado.websocket.WebSocketHandler):
-    """A paired player's connection: commands out, status reports in."""
+    """A player's connection: commands out, status reports in.
+
+    Two kinds of player: a paired device (Docker or .deb), authenticating
+    with its token in the Authorization header, and a browser tab of the
+    party's host, with the host's token in the URL (browsers can't set
+    WebSocket headers). One player per party: a reconnecting player replaces
+    its own old connection, a host's browser may take over (``takeover=1``),
+    and anyone else is refused while the party has a player.
+    """
+
+    @property
+    def ping_interval(self) -> float:
+        return 20  # Notice dead players instead of holding their slot.
 
     def initialize(self, ctx: Context) -> None:
         self.ctx = ctx
         self.room_id: str | None = None
+        self.identity: str | None = None
         self._send_fn: Any = None
 
-    def open(self) -> None:
+    def _authenticate(self) -> tuple[Room, str, str | None] | None:
+        """(room, identity, name) of the connecting player, or None."""
         header = self.request.headers.get("Authorization", "")
-        room = self.ctx.store.verify_player(header.removeprefix("Bearer ").strip())
+        if header:
+            room = self.ctx.store.verify_player(header.removeprefix("Bearer ").strip())
+            if room is None:
+                return None
+            name = self.request.headers.get("X-Player-Name") or room.player_name
+            return room, "device", name
+        found = self.ctx.verify(self.get_argument("token", ""))
+        if found is None or not found[1].admin or self.ctx.settings.mode != "hub":
+            return None
+        room = self.ctx.store.get(found[0])
         if room is None:
-            self.close(4001, "Unknown player; pair it again")
+            return None
+        user = found[1]
+        return room, f"browser:{user.id}", f"{user.name}'s browser"
+
+    def open(self) -> None:
+        found = self._authenticate()
+        if found is None:
+            self.close(CLOSE_UNKNOWN, "Unknown player; pair it again")
             return
-        self.room_id = room.id
+        room, identity, name = found
         old = self.ctx.player_sockets.get(room.id)
-        if old is not None and old is not self:
-            old.close(4000, "Another connection took over")
+        if old is not None and old is not self and old.ws_connection is not None:
+            takeover = identity.startswith("browser:") and self.get_argument(
+                "takeover", ""
+            ) in ("1", "true")
+            if old.identity == identity:
+                old.close(4000, "Reconnected")
+            elif takeover:
+                old.close(CLOSE_DISPLACED, "A browser took over as the speaker")
+            else:
+                self.close(CLOSE_BUSY, f"{old.player_name} is already playing")
+                return
+        self.room_id = room.id
+        self.identity = identity
+        self.player_name = name or "Player"
         self.ctx.player_sockets[room.id] = self
         loop = IOLoop.current()
         self.ctx.hub.set_loop(loop)
@@ -646,7 +698,6 @@ class PlayerSocketHandler(tornado.websocket.WebSocketHandler):
             loop.add_callback(self._write, json.dumps(message))
 
         self._send_fn = send
-        name = self.request.headers.get("X-Player-Name") or room.player_name
         self.write_message({"type": "hello", "room": room.public()})
         self.ctx.api.tell("player_connected", room.id, send, clean_name(name))
         logger.info("Beat Ballot: player connected to %r", room.slug)

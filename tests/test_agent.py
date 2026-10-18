@@ -74,6 +74,11 @@ class FakeCore:
                 core.state = "playing"
                 return Future()
 
+            def stop(self):
+                core.state = "stopped"
+                core.current = None
+                return Future()
+
         self.tracklist = Tracklist()
         self.playback = Playback()
 
@@ -154,3 +159,14 @@ def test_player_identifies_itself(tmp_path):
     agent, _ = make_agent(tmp_path)
     assert agent.user_agent.startswith("BeatBallot-Player/")
     assert "Python" not in agent.user_agent
+
+
+def test_displaced_player_goes_quiet(tmp_path):
+    agent, core = make_agent(tmp_path)
+    agent.handle({"cmd": "enqueue", "seq": 1, "id": 7, "url": "https://x/7"})
+    agent.handle({"cmd": "play", "seq": 2})
+    assert core.state == "playing"
+    agent.handle({"cmd": "_displaced"})
+    assert core.state == "stopped"
+    assert core.tl == []
+    assert agent.ids == {}

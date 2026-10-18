@@ -387,6 +387,58 @@ class HubWebTest(WebTest):
         assert await ws.read_message() is None
         assert ws.close_code == 4001
 
+    async def _device(self):
+        code, _ = self.store.start_pairing("r1")
+        _, token = self.store.pair(code, "Pi")
+        url = f"ws://127.0.0.1:{self.get_http_port()}/player/ws"
+        return await tornado.websocket.websocket_connect(
+            HTTPRequest(url, headers={"Authorization": f"Bearer {token}"})
+        )
+
+    async def _browser(self, token, takeover=False):
+        url = f"ws://127.0.0.1:{self.get_http_port()}/player/ws?token={token}"
+        return await tornado.websocket.websocket_connect(
+            url + ("&takeover=1" if takeover else "")
+        )
+
+    @gen_test
+    async def test_host_browser_can_be_the_player(self):
+        host = await self.ajoin(pin="9999", name="Fred")
+        ws = await self._browser(host)
+        assert json.loads(await ws.read_message())["type"] == "hello"
+        assert ("connected", "r1", "Fred's browser") in self.front.player_events
+        ws.close()
+
+    @gen_test
+    async def test_guest_browser_cannot_be_the_player(self):
+        ws = await self._browser(await self.ajoin())
+        assert await ws.read_message() is None
+        assert ws.close_code == 4001
+
+    @gen_test
+    async def test_one_player_per_party(self):
+        host = await self.ajoin(pin="9999", name="Fred")
+        device = await self._device()
+        await device.read_message()  # hello
+        # A browser without takeover is refused while the device plays.
+        browser = await self._browser(host)
+        assert await browser.read_message() is None
+        assert browser.close_code == 4003
+        # With takeover it pushes the device out.
+        browser = await self._browser(host, takeover=True)
+        assert json.loads(await browser.read_message())["type"] == "hello"
+        assert await device.read_message() is None
+        assert device.close_code == 4002
+        # The device can't push the browser out.
+        device = await self._device()
+        assert await device.read_message() is None
+        assert device.close_code == 4003
+        # The same browser reconnecting replaces its own connection.
+        again = await self._browser(host)
+        assert json.loads(await again.read_message())["type"] == "hello"
+        assert await browser.read_message() is None
+        again.close()
+
     @gen_test
     async def test_player_with_bad_token_is_rejected(self):
         url = f"ws://127.0.0.1:{self.get_http_port()}/player/ws"
@@ -399,6 +451,14 @@ class HubWebTest(WebTest):
 
 class StandaloneWebTest(WebTest):
     mode = "standalone"
+
+    @gen_test
+    async def test_no_browser_player_in_standalone(self):
+        host = await self.ajoin(pin="9999")
+        url = f"ws://127.0.0.1:{self.get_http_port()}/player/ws?token={host}"
+        ws = await tornado.websocket.websocket_connect(url)
+        assert await ws.read_message() is None
+        assert ws.close_code == 4001
 
     def test_owner_endpoints_only_in_hub_mode(self):
         auth = {"Authorization": f"Bearer {self.owner()}"}

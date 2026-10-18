@@ -4,6 +4,7 @@
   import HubAdmin from './components/HubAdmin.svelte'
   import Join from './components/Join.svelte'
   import Landing from './components/Landing.svelte'
+  import Speaker from './components/Speaker.svelte'
   import Toast from './components/Toast.svelte'
   import WinnerOverlay from './components/WinnerOverlay.svelte'
   import { SLUG, connect, party } from './lib/party.svelte.js'
@@ -27,6 +28,8 @@
   <Join />
 {:else if route === '#/host'}
   <Host />
+{:else if route === '#/speaker'}
+  <Speaker />
 {:else}
   <Guest />
 {/if}

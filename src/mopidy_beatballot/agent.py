@@ -101,6 +101,11 @@ class PlayerAgent:
             match cmd:
                 case "_connected":
                     self.ack = 0
+                case "_displaced":
+                    # Another speaker took over the party: go quiet.
+                    self.core.playback.stop().get(timeout=TIMEOUT)
+                    self.core.tracklist.clear().get(timeout=TIMEOUT)
+                    self.ids.clear()
                 case "enqueue":
                     self._enqueue(command)
                 case "remove":
@@ -295,6 +300,17 @@ class PlayerAgent:
                 self.last_error = "The hub unpaired this player"
                 logger.error("Beat Ballot player: %s; pair it again", self.last_error)
                 self.token_file.unlink(missing_ok=True)
+            elif close in (4002, 4003):
+                # 4002: a browser took over as the speaker; 4003: another
+                # player is active. Stay quiet and check back now and then.
+                self.last_error = ws.close_reason or "Another player is active"
+                logger.warning(
+                    "Beat Ballot player: %s; retrying later", self.last_error
+                )
+                if close == 4002:
+                    self._proxy.agent_command({"cmd": "_displaced"})
+                await asyncio.sleep(MAX_BACKOFF_S)
+                continue
             else:
                 logger.warning("Beat Ballot player: lost the hub, reconnecting")
             await asyncio.sleep(1)

@@ -62,6 +62,12 @@
     </div>
   {/if}
 
+  {#if onHub}
+    <a class="btn ghost speaker" href="#/speaker">
+      🔊 {s?.player?.online && s.player.name?.endsWith("'s browser") ? 'Speaker page' : 'Play on this device'}
+    </a>
+  {/if}
+
   <div class="row">
     <button class="btn ghost" onclick={() => admin(paused ? 'resume' : 'pause')}>{paused ? '▶ Resume' : '⏸ Pause'}</button>
     <button class="btn ghost" onclick={() => admin('skip')}>⏭ Skip</button>
@@ -191,6 +197,10 @@
     accent-color: var(--accent);
     width: 1.1rem;
     height: 1.1rem;
+  }
+  .speaker {
+    justify-self: start;
+    text-decoration: none;
   }
   .numbers {
     display: grid;
