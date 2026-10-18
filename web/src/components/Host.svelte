@@ -4,7 +4,29 @@
   import Candidates from './Candidates.svelte'
   import LockStatus from './LockStatus.svelte'
   import NowPlaying from './NowPlaying.svelte'
-  import { fetchInfo, party, roomUrl } from '../lib/party.svelte.js'
+  import { fetchInfo, party, roomUrl, toast } from '../lib/party.svelte.js'
+  import { speaker, start as startSpeaker, stop as stopSpeaker } from '../lib/speaker.svelte.js'
+
+  // A host on a hub can make this screen the party's speaker too.
+  const canPlay = $derived(Boolean(party.session?.user?.admin) && party.state?.settings?.mode === 'hub')
+
+  function playHere() {
+    const other = party.state?.player?.online ? party.state.player.name : null
+    if (other && !confirm(`${other} is playing now. Play on this screen instead?`)) return
+    startSpeaker() // from the click: browsers only allow audio after a tap
+  }
+
+  function stopHere() {
+    if (confirm('Stop playing music on this screen?')) stopSpeaker()
+  }
+
+  // Leaving the big screen stops the music it started.
+  $effect(() => () => speaker.active && stopSpeaker())
+
+  // E.g. "Another device took over as the speaker".
+  $effect(() => {
+    if (speaker.error) toast(speaker.error)
+  })
 
   // The big screen sizes everything from the viewport (see app.css), so it
   // fills any TV, landscape or portrait. A-/A+ fine-tune it per screen.
@@ -64,13 +86,24 @@
   const s = $derived(party.state)
 </script>
 
-<svelte:window onkeydown={onKey} />
+<svelte:window
+  onkeydown={onKey}
+  onbeforeunload={(e) => speaker.active && (e.preventDefault(), (e.returnValue = ''))}
+/>
 
 <div class="host">
   <header class="brand">
     <span class="title">🗳️ <span class="gradient-text">Beat Ballot</span></span>
     {#if s?.test_mode}<span class="badge test">TEST MODE</span>{/if}
+    {#if speaker.active}
+      <button class="badge playing-here" class:waiting={!speaker.connected} onclick={stopHere} title="Stop playing here">
+        🔊 {speaker.connected ? 'Playing here' : 'Connecting…'}
+      </button>
+    {/if}
     <span class="tools">
+      {#if canPlay && !speaker.active}
+        <button onclick={playHere} title="Play the music on this screen" aria-label="Play the music on this screen">🔊</button>
+      {/if}
       <button onclick={() => setScale(scale - 0.1)} title="Smaller (−)" aria-label="Smaller text">A−</button>
       <button onclick={() => setScale(1)} title="Reset size (0)" aria-label="Reset text size">{Math.round(scale * 100)}%</button>
       <button onclick={() => setScale(scale + 0.1)} title="Bigger (+)" aria-label="Bigger text">A+</button>
@@ -178,6 +211,16 @@
   .tools:hover,
   .tools:focus-within {
     opacity: 1;
+  }
+  .playing-here {
+    font-size: 0.8rem;
+    background: rgb(61 220 151 / 0.15);
+    color: var(--good);
+    cursor: pointer;
+  }
+  .playing-here.waiting {
+    background: rgb(255 204 61 / 0.15);
+    color: var(--warn);
   }
   .tools button,
   .tools a {

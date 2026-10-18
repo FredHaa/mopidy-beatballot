@@ -59,6 +59,7 @@ also make their browser the party's speaker.
 **The big screen** (`…#/host`, linked at the bottom of the party page) shows what's
 playing, the countdown, the ballot and a QR code with the PIN. It sizes itself to the
 screen; A− / A+ in the corner (or the `+`, `-` and `0` keys) adjust it per screen.
+On a hub, a host's big screen can also be the party's speaker: press 🔊 in the corner.
 
 ## Three ways to run it
 
@@ -148,7 +149,7 @@ to the music services; for each song it sends the player a short-lived stream UR
 
 | Player | Best for | Setup |
 | --- | --- | --- |
-| **Browser** | Any laptop, tablet or TV browser | Nothing to install. Join the party with the host PIN, press **Play on this device** in the host controls, then **Start playing here** |
+| **Browser** | Any laptop, tablet or TV browser | Nothing to install. Join the party with the host PIN, press **Play on this device** in the host controls, then **Start playing here**. Or press 🔊 in the corner of the big screen, so the TV showing the party also plays it |
 | **.deb package** | A Raspberry Pi or Linux box that stays put | See below |
 | **Docker** | Anything that runs Docker | The `docker run` command on the hub page (Pair player), or `compose.player.yaml` |
 
