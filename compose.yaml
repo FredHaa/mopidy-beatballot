@@ -16,3 +16,6 @@ services:
       - ./data:/var/lib/mopidy
       # Optional: extra Mopidy settings.
       # - ./extra.conf:/etc/mopidy/extra.conf:ro
+      # Desktop with PipeWire/PulseAudio instead of /dev/snd: set
+      # AUDIO_OUTPUT=pulsesink and PULSE_SERVER=unix:/run/pulse/native in .env, and
+      # - /run/user/1000/pulse/native:/run/pulse/native
