@@ -1,0 +1,13 @@
+[Unit]
+Description=Beat Ballot player (plays a Beat Ballot hub's party)
+Documentation=https://github.com/FredHaa/mopidy-beatballot
+After=pipewire-pulse.service pulseaudio.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/beatballot-player run
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

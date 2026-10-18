@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: "3.13"
       # The tests don't touch GStreamer, so skip compiling PyGObject.
-      - run: uv sync --locked --no-install-package pygobject --no-install-package pycairo
+      - run: uv sync --locked --all-extras --no-install-package pygobject --no-install-package pycairo
       - run: uv run --no-sync ruff check src tests dev
       - run: uv run --no-sync pytest -q
       - uses: actions/setup-node@v4

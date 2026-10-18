@@ -1,0 +1,192 @@
+#!/bin/sh
+# Beat Ballot player: plays a Beat Ballot hub's party on this machine.
+#
+# As root it manages the system service (headless machines, e.g. a Pi); as a
+# normal user it manages your own user service (desktops with PipeWire or
+# PulseAudio, where only your session can reach the sound card).
+set -eu
+
+VENV=/opt/beatballot-player
+SERVICE=beatballot-player
+
+if [ "$(id -u)" = 0 ] || [ "${BEATBALLOT_SYSTEM:-}" = 1 ]; then
+    MODE=system
+    CONF=/etc/beatballot-player/player.conf
+    DATA=/var/lib/beatballot-player
+else
+    MODE=user
+    CONF=${XDG_CONFIG_HOME:-$HOME/.config}/beatballot-player/player.conf
+    DATA=${XDG_DATA_HOME:-$HOME/.local/share}/beatballot-player
+fi
+TOKEN=$DATA/data/beatballot/player-token
+
+die() { echo "beatballot-player: $*" >&2; exit 1; }
+
+usage() {
+    cat <<EOF
+Usage: beatballot-player COMMAND
+
+  pair CODE [HUB_URL]  Pair with a party using a code from the hub page, then start
+  unpair               Forget the party (pair again to play)
+  status               Is the player connected, and to which party?
+  logs                 Follow the player's log
+  run                  Run in the foreground (what the service does)
+
+Settings: $CONF
+Run with sudo for the system service; without sudo for your own user service
+(use that on desktops with PipeWire/PulseAudio, with AUDIO_OUTPUT=pulsesink).
+EOF
+}
+
+load() {
+    if [ ! -f "$CONF" ]; then
+        [ "$MODE" = user ] || die "missing $CONF; reinstall the package"
+        mkdir -p "$(dirname "$CONF")"
+        # Desktop sessions reach the sound card through PipeWire/PulseAudio.
+        sed 's/^AUDIO_OUTPUT=.*/AUDIO_OUTPUT="pulsesink"/' \
+            /etc/beatballot-player/player.conf > "$CONF"
+    fi
+    set -a
+    # shellcheck disable=SC1090
+    . "$CONF"
+    set +a
+    HTTP_PORT=${HTTP_PORT:-6680}
+}
+
+set_conf() {  # key value
+    if grep -q "^$1=" "$CONF"; then
+        sed -i "s|^$1=.*|$1=\"$2\"|" "$CONF"
+    else
+        printf '%s="%s"\n' "$1" "$2" >> "$CONF"
+    fi
+}
+
+has_systemd() { [ -d /run/systemd/system ] && command -v systemctl > /dev/null; }
+
+sysctl() {
+    if [ "$MODE" = system ]; then systemctl "$@"; else systemctl --user "$@"; fi
+}
+
+health() {  # prints a line; exit 0 when connected to the hub
+    "$VENV/bin/python" - "$HTTP_PORT" <<'PY'
+import json, sys, urllib.error, urllib.request
+url = f"http://127.0.0.1:{sys.argv[1]}/beatballot/api/health"
+try:
+    with urllib.request.urlopen(url, timeout=3) as r:
+        h = json.load(r)
+except urllib.error.HTTPError as e:
+    h = json.load(e)
+except OSError:
+    print("not running")
+    sys.exit(2)
+room = (h.get("room") or {}).get("name")
+if h.get("ok"):
+    print(f"connected to {h['hub']}, playing party {room!r}")
+else:
+    print(h.get("error") or f"connecting to {h.get('hub')}")
+sys.exit(0 if h.get("ok") else 1)
+PY
+}
+
+cmd_run() {
+    load
+    [ -n "${HUB_URL:-}" ] || die "set HUB_URL in $CONF (or: beatballot-player pair CODE HUB_URL)"
+    mkdir -p "$DATA/cache" "$DATA/config" "$DATA/data/beatballot/manifests"
+    cat > "$DATA/mopidy.conf" <<CONF
+[core]
+cache_dir = $DATA/cache
+config_dir = $DATA/config
+data_dir = $DATA/data
+
+[logging]
+verbosity = ${VERBOSITY:-0}
+
+[audio]
+output = ${AUDIO_OUTPUT:-alsasink}
+mixer = software
+mixer_volume = ${MIXER_VOLUME:-80}
+
+[http]
+hostname = 127.0.0.1
+port = $HTTP_PORT
+default_app = beatballot
+
+[file]
+enabled = true
+media_dirs = $DATA/data/beatballot/manifests
+show_dotfiles = false
+
+[m3u]
+enabled = false
+
+[beatballot]
+mode = player
+hub_url = $HUB_URL
+pair_code = ${PAIR_CODE:-}
+player_name = ${PLAYER_NAME:-}
+CONF
+    exec "$VENV/bin/mopidy" --config "$DATA/mopidy.conf"
+}
+
+cmd_pair() {
+    [ $# -ge 1 ] || die "usage: beatballot-player pair CODE [HUB_URL]"
+    load
+    set_conf PAIR_CODE "$1"
+    [ $# -ge 2 ] && set_conf HUB_URL "$2"
+    load
+    [ -n "${HUB_URL:-}" ] || die "give the hub's address: beatballot-player pair $1 https://your.hub"
+    rm -f "$TOKEN"  # Pair afresh, replacing any old party.
+    if ! has_systemd; then
+        echo "Saved. Start the player with: beatballot-player run"
+        return
+    fi
+    sysctl enable --quiet "$SERVICE"
+    sysctl restart "$SERVICE"
+    printf 'Pairing with %s ' "$HUB_URL"
+    i=0
+    while [ $i -lt 30 ]; do
+        if result=$(health 2> /dev/null); then
+            echo
+            echo "Paired: $result"
+            return
+        fi
+        printf '.'
+        sleep 2
+        i=$((i + 1))
+    done
+    echo
+    die "not connected yet: ${result:-no answer}. See: beatballot-player logs"
+}
+
+cmd_unpair() {
+    load
+    rm -f "$TOKEN"
+    set_conf PAIR_CODE ""
+    if has_systemd; then
+        sysctl disable --now --quiet "$SERVICE" || true
+    fi
+    echo "Unpaired. Pair again with: beatballot-player pair CODE"
+}
+
+cmd_status() {
+    load
+    health || true
+}
+
+cmd_logs() {
+    if [ "$MODE" = system ]; then
+        exec journalctl -u "$SERVICE" -f
+    else
+        exec journalctl --user-unit "$SERVICE" -f
+    fi
+}
+
+case "${1:-}" in
+    pair) shift; cmd_pair "$@" ;;
+    unpair) cmd_unpair ;;
+    status) cmd_status ;;
+    logs) cmd_logs ;;
+    run) cmd_run ;;
+    -h|--help|help|"") usage ;;
+    *) usage >&2; exit 2 ;;
+esac

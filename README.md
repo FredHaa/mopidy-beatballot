@@ -115,6 +115,45 @@ Or use `compose.player.yaml`. The player keeps its token in its volume, so the
 code is only needed once. If the player goes offline, voting carries on and the
 music resumes when it's back; guests see "Speaker offline" meanwhile.
 
+### Three kinds of player
+
+| Player | Best for | Setup |
+| --- | --- | --- |
+| **Browser** | Any laptop, tablet or TV browser | Nothing to install. Join the party with the host PIN, then press **Play on this device** in the host controls and **Start playing here**. |
+| **.deb package** | A Raspberry Pi or Linux box that stays put | `sudo apt install ./beatballot-player_*_arm64.deb` (or `amd64`), then `sudo beatballot-player pair CODE https://<hub>` |
+| **Docker** | Anything that runs Docker | The `docker run` command on the hub page, or `compose.player.yaml` |
+
+A party has one player at a time. A host's browser can take over from another
+player (it asks first); the replaced player goes quiet and retries now and then,
+so it takes over again once the browser stops.
+
+**Browser player.** Keep the tab open, the screen on (it asks the browser to stay
+awake) and the charger in: phones pause background tabs, so a laptop, tablet or TV
+works best. Songs preload, so there's barely a gap between them. Volume is on the
+speaker page; leaving the page stops the music. Tidal plays in all current
+browsers; SoundCloud songs that only stream as HLS may not play outside Safari.
+
+**.deb package** (Debian 13 / Raspberry Pi OS "trixie" or newer, Ubuntu with
+Python 3.13+; amd64 and arm64, from [Releases](https://github.com/FredHaa/mopidy-beatballot/releases)):
+
+```sh
+sudo apt install ./beatballot-player_0.2.0_arm64.deb
+sudo beatballot-player pair ABCD-EFGH https://www.example.party   # runs as a service
+beatballot-player status        # connected, and to which party?
+beatballot-player logs          # follow the log
+sudo beatballot-player unpair   # stop and forget the party
+```
+
+Settings (hub, name, sound output, volume) are in `/etc/beatballot-player/player.conf`.
+On a desktop with PipeWire or PulseAudio, only your own session can reach the sound
+card: run the commands without `sudo` to use a per-user service with
+`AUDIO_OUTPUT=pulsesink` (settings in `~/.config/beatballot-player/`). The package
+installs Mopidy and Beat Ballot in `/opt/beatballot-player` on top of the system's
+GStreamer and PyGObject, and no music services: the hub sends the streams.
+
+Build the packages yourself with `packaging/deb/build.sh amd64 arm64` (needs Docker,
+plus QEMU for the other architecture, uv and npm).
+
 The landing page (`/beatballot/`) lists the parties, or goes straight to the only
 one. Hide a party from it in the hub page.
 
@@ -207,7 +246,7 @@ commented volume in `compose.yaml`.
 sudo apt install python3-gi gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 \
     gstreamer1.0-plugins-good
 uv venv --system-site-packages
-uv sync --no-install-package pygobject --no-install-package pycairo
+uv sync --all-extras --no-install-package pygobject --no-install-package pycairo
 uv run pytest
 
 # Web app
@@ -235,6 +274,8 @@ src/mopidy_beatballot/
   player.py    adapter from Mopidy core to the small Player protocol
   remote.py    hub side of a remote player; resolves songs to stream URLs
   agent.py     player mode: connects to the hub and plays what it sends
+web/src/lib/speaker.svelte.js  the browser player (same protocol as agent.py)
+packaging/deb/ beatballot-player .deb: wrapper command, systemd units, build
   frontend.py  pykka actor + CoreListener; 250 ms ticker drives the parties
   web.py       Tornado: parties, hub owner API, player sockets, static app
   hub.py       thread-safe broadcast of each party's state to its guests

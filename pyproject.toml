@@ -1,6 +1,6 @@
 [project]
 name = "mopidy-beatballot"
-version = "0.1.0"
+version = "0.2.0"
 description = "Mopidy extension where party guests vote on the next song"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -9,12 +9,17 @@ authors = [{ name = "Frederik Haarslev" }]
 keywords = ["mopidy", "party", "voting", "jukebox", "spotify", "tidal", "soundcloud"]
 dependencies = [
     "mopidy>=4.0.4",
-    "mopidy-spotify>=5.0.1",
-    "mopidy-tidal>=0.3.13",
-    "mopidy-soundcloud>=4.0.0",
     "pykka>=4.1",
     "tornado>=6.4.2",
 ]
+
+# Music services, for standalone mode and hubs. A player needs none of them:
+# its hub sends it stream URLs.
+[project.optional-dependencies]
+tidal = ["mopidy-tidal>=0.3.13"]
+spotify = ["mopidy-spotify>=5.0.1"]
+soundcloud = ["mopidy-soundcloud>=4.0.0"]
+all = ["mopidy-beatballot[tidal,spotify,soundcloud]"]
 
 [project.urls]
 Repository = "https://github.com/FredHaa/mopidy-beatballot"

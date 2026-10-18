@@ -23,12 +23,12 @@ WORKDIR /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --locked --no-dev --no-install-project
+    uv sync --locked --no-dev --all-extras --no-install-project
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ src/
 COPY --from=web /static src/mopidy_beatballot/static
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-editable
+    uv sync --locked --no-dev --all-extras --no-editable
 
 # --- 3. Runtime -------------------------------------------------------------
 FROM ${PYTHON_IMAGE} AS runtime

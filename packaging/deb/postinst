@@ -1,0 +1,26 @@
+#!/bin/sh
+set -e
+if [ "$1" = configure ]; then
+    if ! getent passwd beatballot-player > /dev/null; then
+        adduser --system --group --quiet --home /var/lib/beatballot-player \
+            --no-create-home beatballot-player
+    fi
+    adduser --quiet beatballot-player audio > /dev/null 2>&1 || true
+    install -d -o beatballot-player -g beatballot-player -m 750 /var/lib/beatballot-player
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload > /dev/null 2>&1 || true
+        if systemctl is-enabled --quiet beatballot-player 2> /dev/null; then
+            systemctl restart beatballot-player || true
+        fi
+    fi
+    cat <<'MSG'
+
+Beat Ballot player installed. Pair it with a code from your hub's page
+(log in to https://<hub>/beatballot/#/hub, then "Pair player"):
+
+  Headless (e.g. a Raspberry Pi):  sudo beatballot-player pair ABCD-EFGH https://<hub>
+  Desktop with PipeWire/Pulse:     beatballot-player pair ABCD-EFGH https://<hub>
+
+MSG
+fi
+exit 0

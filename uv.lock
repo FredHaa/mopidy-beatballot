@@ -309,15 +309,28 @@ wheels = [
 
 [[package]]
 name = "mopidy-beatballot"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "mopidy" },
+    { name = "pykka" },
+    { name = "tornado" },
+]
+
+[package.optional-dependencies]
+all = [
     { name = "mopidy-soundcloud" },
     { name = "mopidy-spotify" },
     { name = "mopidy-tidal" },
-    { name = "pykka" },
-    { name = "tornado" },
+]
+soundcloud = [
+    { name = "mopidy-soundcloud" },
+]
+spotify = [
+    { name = "mopidy-spotify" },
+]
+tidal = [
+    { name = "mopidy-tidal" },
 ]
 
 [package.dev-dependencies]
@@ -329,12 +342,14 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "mopidy", specifier = ">=4.0.4" },
-    { name = "mopidy-soundcloud", specifier = ">=4.0.0" },
-    { name = "mopidy-spotify", specifier = ">=5.0.1" },
-    { name = "mopidy-tidal", specifier = ">=0.3.13" },
+    { name = "mopidy-beatballot", extras = ["tidal", "spotify", "soundcloud"], marker = "extra == 'all'" },
+    { name = "mopidy-soundcloud", marker = "extra == 'soundcloud'", specifier = ">=4.0.0" },
+    { name = "mopidy-spotify", marker = "extra == 'spotify'", specifier = ">=5.0.1" },
+    { name = "mopidy-tidal", marker = "extra == 'tidal'", specifier = ">=0.3.13" },
     { name = "pykka", specifier = ">=4.1" },
     { name = "tornado", specifier = ">=6.4.2" },
 ]
+provides-extras = ["tidal", "spotify", "soundcloud", "all"]
 
 [package.metadata.requires-dev]
 dev = [
