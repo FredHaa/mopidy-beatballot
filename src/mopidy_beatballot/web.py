@@ -270,11 +270,22 @@ class Context:
     def verify(self, token: str) -> tuple[str, User] | None:
         return self.auth.verify(token, self.pins)
 
+    def home_room(self) -> Room | None:
+        """With exactly one listed party, the app's front page is that party
+        (and /r/<slug>/ redirects there). Hidden parties keep /r/<slug>/."""
+        listed = [r for r in self.store.list() if r.listed]
+        return listed[0] if len(listed) == 1 else None
+
+    def room_path(self, room: Room) -> str:
+        """Where a party lives, relative to the app's base URL."""
+        home = self.home_room()
+        return "" if home is not None and home.id == room.id else f"r/{room.slug}/"
+
     def join_url(self, room: Room) -> str | None:
         base = self.settings.public_url
         if not base:
             return None
-        return f"{base.rstrip('/')}/r/{room.slug}/"
+        return f"{base.rstrip('/')}/{self.room_path(room)}"
 
     def base_url(self) -> str:
         base = self.settings.public_url
@@ -612,8 +623,12 @@ class OwnerHandler(BaseHandler):
 class HubRoomsHandler(OwnerHandler):
     async def get(self) -> None:
         rows = await self.call("overview", self.ctx.base_url())
+        base = self.ctx.base_url()
         for row in rows:
             row["player"]["connected"] = row["id"] in self.ctx.player_sockets
+            room = self.ctx.store.get(row["id"])
+            if base and room is not None:
+                row["join_url"] = base + self.ctx.room_path(room)
         self.write_json({"rooms": rows})
 
     async def post(self) -> None:
@@ -798,16 +813,34 @@ class AppHandler(tornado.web.StaticFileHandler):
             self.set_header("Cache-Control", "no-cache")
 
 
-class RoomPageHandler(tornado.web.RequestHandler):
-    """/r/<slug>/ is the app too; it reads the party from the path."""
+class PageHandler(tornado.web.RequestHandler):
+    """The app's page. It reads the party from the path (/r/<slug>/), or from
+    the "beatballot-room" meta tag on the front page when there's one party."""
 
-    def get(self, slug: str) -> None:
-        self.set_header("Cache-Control", "no-cache")
-        self.set_header("Content-Type", "text/html; charset=UTF-8")
+    def initialize(self, ctx: Context) -> None:
+        self.ctx = ctx
+
+    def get(self, slug: str | None = None) -> None:
+        home = self.ctx.home_room()
+        if slug is not None and home is not None and slug == home.slug:
+            # The only party lives at the front page: /beatballot/r/x/?pin=1
+            # -> /beatballot/?pin=1. Browsers keep the #/host part.
+            path = self.request.path
+            target = path[: path.rindex(f"/r/{slug}") + 1]
+            if self.request.query:
+                target += f"?{self.request.query}"
+            self.redirect(target)  # 302: a second party moves it back.
+            return
         try:
-            self.finish((STATIC_DIR / "index.html").read_bytes())
+            html = (STATIC_DIR / "index.html").read_text()
         except FileNotFoundError:
             raise tornado.web.HTTPError(404) from None
+        if slug is None and home is not None:
+            meta = f'<meta name="beatballot-room" content="{home.slug}" />'
+            html = html.replace("</head>", f"    {meta}\n  </head>", 1)
+        self.set_header("Cache-Control", "no-cache")
+        self.set_header("Content-Type", "text/html; charset=UTF-8")
+        self.finish(html)
 
 
 class PlayerHealthHandler(tornado.web.RequestHandler):
@@ -869,7 +902,8 @@ def routes(ctx: Context) -> list[tuple[Any, ...]]:
         (r"/api/player/pair", PlayerPairHandler, c),
         (r"/player/ws", PlayerSocketHandler, c),
         (r"/ws", SocketHandler, c),
-        (rf"/r/{slug}/?.*", RoomPageHandler),
+        (rf"/r/{slug}/?.*", PageHandler, c),
+        (r"/(?:index\.html)?", PageHandler, c),
         (
             r"/(.*)",
             AppHandler,

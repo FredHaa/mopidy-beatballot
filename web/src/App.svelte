@@ -7,7 +7,7 @@
   import Speaker from './components/Speaker.svelte'
   import Toast from './components/Toast.svelte'
   import WinnerOverlay from './components/WinnerOverlay.svelte'
-  import { SLUG, connect, party } from './lib/party.svelte.js'
+  import { AT_HOME, SLUG, connect, party } from './lib/party.svelte.js'
 
   let route = $state(location.hash)
 
@@ -22,8 +22,10 @@
   })
 </script>
 
-{#if !SLUG}
-  {#if route === '#/hub'}<HubAdmin />{:else}<Landing />{/if}
+{#if AT_HOME && route === '#/hub'}
+  <HubAdmin />
+{:else if !SLUG}
+  <Landing />
 {:else if !party.session}
   <Join />
 {:else if route === '#/host'}
@@ -34,5 +36,5 @@
   <Guest />
 {/if}
 
-{#if SLUG && party.session}<WinnerOverlay />{/if}
+{#if SLUG && party.session && !(AT_HOME && route === '#/hub')}<WinnerOverlay />{/if}
 <Toast />

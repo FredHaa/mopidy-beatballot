@@ -249,6 +249,54 @@ class WebTest(AsyncHTTPTestCase):
         assert self.post("/api/hub/login", {"pin": "1"}).code == 403
         assert self.owner()
 
+    # the only party lives at the front page
+
+    def page(self, path):
+        from mopidy_beatballot import web
+
+        static = Path(tempfile.mkdtemp())
+        (static / "index.html").write_text("<html><head></head><body></body></html>")
+        old, web.STATIC_DIR = web.STATIC_DIR, static
+        try:
+            return self.fetch(path, follow_redirects=False)
+        finally:
+            web.STATIC_DIR = old
+
+    def test_only_party_is_the_front_page(self):
+        res = self.page("/r/party/?pin=1234")
+        assert res.code == 302
+        assert res.headers["Location"] == "/?pin=1234"
+        assert self.page("/r/party/").headers["Location"] == "/"
+        home = self.page("/").body.decode()
+        assert '<meta name="beatballot-room" content="party" />' in home
+        self.settings.public_url = "https://example.party/beatballot/"
+        info = json.loads(self.fetch("/api/rooms/party/info").body)
+        assert info["public_url"] == "https://example.party/beatballot/"
+
+    def test_hidden_parties_dont_count(self):
+        self.store.add(
+            Room(
+                id="r2",
+                slug="secret",
+                name="Secret",
+                pin="1",
+                admin_pin="2",
+                listed=False,
+            )
+        )
+        assert self.page("/r/party/").code == 302
+        assert self.page("/r/secret/").code == 200
+
+    def test_with_two_parties_each_has_its_page(self):
+        self.store.add(
+            Room(id="r2", slug="other", name="Other", pin="1", admin_pin="2")
+        )
+        assert self.page("/r/party/").code == 200
+        assert "beatballot-room" not in self.page("/").body.decode()
+        self.settings.public_url = "https://example.party/beatballot/"
+        info = json.loads(self.fetch("/api/rooms/party/info").body)
+        assert info["public_url"] == "https://example.party/beatballot/r/party/"
+
     # music services
 
     def services(self, path="", body=None, token=None):

@@ -2,13 +2,17 @@
 
 const BASE = import.meta.env.BASE_URL
 
-/** The party this page belongs to: /beatballot/r/<slug>/ */
-export const SLUG = location.pathname.slice(BASE.length).match(/^r\/([a-z0-9-]+)/)?.[1] ?? null
+/** With one party, the server serves it at the front page and says which. */
+const HOME_SLUG = document.querySelector('meta[name="beatballot-room"]')?.content || null
+/** True on the front page (/beatballot/), false on /beatballot/r/<slug>/. */
+export const AT_HOME = !/^r\//.test(location.pathname.slice(BASE.length))
+/** The party this page belongs to: /beatballot/r/<slug>/, or the only party. */
+export const SLUG = location.pathname.slice(BASE.length).match(/^r\/([a-z0-9-]+)/)?.[1] ?? HOME_SLUG
 const SESSION_KEY = `beatballot.session.${SLUG}`
 
 /** Where a party's guests join (QR code, links). */
 export function roomUrl(slug = SLUG) {
-  return `${location.origin}${BASE}r/${slug}/`
+  return `${location.origin}${BASE}${slug === HOME_SLUG ? '' : `r/${slug}/`}`
 }
 
 function loadSession() {
