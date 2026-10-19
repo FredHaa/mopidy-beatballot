@@ -1,4 +1,4 @@
-// The hub owner's API: parties, pairing players, the Tidal login.
+// The hub owner's API: parties, pairing players.
 
 const BASE = import.meta.env.BASE_URL
 const OWNER_KEY = 'beatballot.owner'
@@ -54,7 +54,3 @@ export const deleteRoom = (id) => api('DELETE', `hub/rooms/${id}`)
 export const pairPlayer = (id) => api('POST', `hub/rooms/${id}/pair`, {})
 export const unpairPlayer = (id) => api('POST', `hub/rooms/${id}/unpair`, {})
 
-export async function tidalLogin() {
-  const res = await fetch(`${BASE}api/logins?token=${encodeURIComponent(owner.token ?? '')}`)
-  return res.ok ? (await res.json()).tidal : null
-}

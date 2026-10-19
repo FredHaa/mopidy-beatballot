@@ -120,3 +120,28 @@ def test_search_tracks_maps_tidal_results(tmp_path):
     assert t.album == "Discovery"
     assert t.length_ms == 320_000
     assert t.image == "https://cover/320"
+
+
+def test_without_backend_waits_for_connect_then_disconnects(tmp_path):
+    future = concurrent.futures.Future()
+    path = tmp_path / "s.json"
+    auth = TidalAuth(path, session_factory=lambda: FakeSession(futures=[future]))
+    changed = threading.Event()
+    auth._on_change = changed.set
+    auth.start(auto_login=False)
+    assert changed.wait(2)
+    assert auth.state == "disconnected"
+
+    run_connect = threading.Event()
+    auth._on_change = lambda: run_connect.set() if auth.state == "pending" else None
+    auth.connect()
+    assert run_connect.wait(2)
+    auth.connect()  # Already logging in: no second login.
+
+    path.write_text("{}")
+    auth.disconnect()
+    assert auth.state == "disconnected"
+    assert auth.status()["url"] is None
+    assert not path.exists()
+    future.set_result(True)  # The cancelled login finishing changes nothing.
+    assert auth.state == "disconnected"

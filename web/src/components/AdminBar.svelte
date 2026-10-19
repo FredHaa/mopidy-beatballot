@@ -1,33 +1,15 @@
 <script>
+  import Services from './Services.svelte'
   import Source from './Source.svelte'
-  import { admin, fetchLogins, party } from '../lib/party.svelte.js'
+  import { admin, party } from '../lib/party.svelte.js'
 
   const s = $derived(party.state)
   const paused = $derived(s?.paused_by_host || s?.playback === 'paused')
   let playlists = $state(null) // null until the host starts editing
-  let tidal = $state(null)
 
-  // Poll for a pending Tidal login so the host can approve it from here.
-  // On a hub that's the hub owner's job (on the hub page), not a party host's.
+  // A standalone party's host connects the music services; on a hub that's
+  // the hub owner's job (on the hub page).
   const onHub = $derived(s?.settings?.mode === 'hub')
-  $effect(() => {
-    if (onHub) return
-    let alive = true
-    const poll = async () => {
-      try {
-        const logins = await fetchLogins()
-        if (alive) tidal = logins.tidal
-      } catch {
-        // Try again on the next tick.
-      }
-    }
-    poll()
-    const timer = setInterval(poll, 4000)
-    return () => {
-      alive = false
-      clearInterval(timer)
-    }
-  })
 
   function setNumber(action, input, min, max) {
     const value = Math.round(Number(input.value))
@@ -48,18 +30,8 @@
 <section class="admin">
   <h4>Host controls</h4>
 
-  {#if tidal && tidal.state !== 'logged_in'}
-    <div class="login">
-      <strong>Connect Tidal</strong>
-      {#if tidal.url}
-        <p>Open the link and log in with the party's Tidal account. Code <code>{tidal.code}</code>, expires in {Math.ceil(tidal.expires_in / 60)} min.</p>
-        <a class="btn" href={tidal.url} target="_blank" rel="noreferrer">Log in to Tidal ↗</a>
-      {:else if tidal.state === 'error'}
-        <p>Couldn't reach Tidal. Retrying…</p>
-      {:else}
-        <p>Checking the Tidal login…</p>
-      {/if}
-    </div>
+  {#if s && !onHub}
+    <Services token={party.session?.token} />
   {/if}
 
   {#if onHub}
@@ -159,20 +131,6 @@
     color: var(--warn);
     font-size: 0.8rem;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-  }
-  .login {
-    padding: 0.9rem;
-    border-radius: 0.875rem;
-    background: rgb(95 227 240 / 0.08);
-    border: 1px solid rgb(95 227 240 / 0.35);
-  }
-  .login p {
-    margin: 0.3rem 0 0.7rem;
-    font-size: 0.88rem;
-  }
-  .login code {
-    font-weight: 800;
     letter-spacing: 0.1em;
   }
   .row {

@@ -1,5 +1,6 @@
 <script>
   import Art from './Art.svelte'
+  import Services from './Services.svelte'
   import {
     createRoom,
     deleteRoom,
@@ -8,7 +9,6 @@
     logout,
     owner,
     pairPlayer,
-    tidalLogin,
     unpairPlayer,
     updateRoom,
   } from '../lib/hub.svelte.js'
@@ -18,7 +18,6 @@
   let pin = $state('')
   let error = $state('')
   let rooms = $state([])
-  let tidal = $state(null)
   let pairing = $state({}) // room id -> { code, expiresAt }
   let editing = $state(null) // room id
   let draft = $state({})
@@ -29,7 +28,6 @@
   async function refresh() {
     try {
       rooms = await listRooms()
-      tidal = await tidalLogin()
     } catch (e) {
       if (owner.token) toast(e.message)
     }
@@ -140,23 +138,13 @@
   {#if !owner.token}
     <form class="card login" onsubmit={submitLogin}>
       <h2>Hub owner</h2>
-      <p class="muted">Create parties, pair players and connect Tidal.</p>
+      <p class="muted">Create parties, pair players and connect music services.</p>
       <input class="field pin" type="password" bind:value={pin} placeholder="Hub PIN" autocomplete="current-password" required />
       {#if error}<p class="error">{error}</p>{/if}
       <button class="btn" disabled={!pin.trim()}>Log in</button>
     </form>
   {:else}
-    {#if tidal && tidal.state !== 'logged_in'}
-      <section class="card tidal">
-        <strong>Connect Tidal</strong>
-        {#if tidal.url}
-          <p>Log in with the hub's Tidal account. Code <code>{tidal.code}</code>, expires in {Math.ceil(tidal.expires_in / 60)} min.</p>
-          <a class="btn" href={tidal.url} target="_blank" rel="noreferrer">Log in to Tidal ↗</a>
-        {:else}
-          <p class="muted">Checking the Tidal login…</p>
-        {/if}
-      </section>
-    {/if}
+    <Services token={owner.token} />
 
     <section class="rooms">
       {#each rooms as room (room.id)}
@@ -283,13 +271,6 @@
   .error {
     margin: 0;
     color: var(--accent);
-  }
-  .tidal {
-    background: rgb(95 227 240 / 0.08);
-    border-color: rgb(95 227 240 / 0.35);
-  }
-  .tidal p {
-    margin: 0;
   }
   .rooms {
     display: grid;

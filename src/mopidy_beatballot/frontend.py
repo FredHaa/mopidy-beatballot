@@ -8,7 +8,7 @@ from typing import Any
 import pykka
 from mopidy.core import CoreListener
 
-from . import hub, rooms, tidal_auth
+from . import hub, rooms, services, tidal_auth
 from .parties import Parties
 from .player import MopidyPlayer
 from .rooms import Room, RoomStore
@@ -31,6 +31,7 @@ class BallotFrontend(pykka.ThreadingActor, CoreListener):
         self.settings = Settings.from_config(config["beatballot"])
         self.mode = self.settings.mode
         self.tidal: tidal_auth.TidalAuth | None = None
+        self._restarting = False
         self.agent: Any = None
         self.parties: Parties | None = None
         self.local_player: MopidyPlayer | None = None
@@ -108,13 +109,21 @@ class BallotFrontend(pykka.ThreadingActor, CoreListener):
     def login_pending(self, source: str) -> bool:
         return source == "tidal" and self.tidal is not None and self.tidal.pending
 
-    def _start_tidal_login(self) -> None:
-        if "tidal" not in self.core.get_uri_schemes().get(timeout=20):
-            return
+    def _start_services(self) -> None:
+        """Logins for the web app's music services panel."""
+        schemes = set(self.core.get_uri_schemes().get(timeout=20))
+        soundcloud = self.config.get("soundcloud") or {}
+        services.SOUNDCLOUD = services.SoundCloudAccount(
+            self._data_dir(), soundcloud.get("auth_token"), "soundcloud" in schemes
+        )
+        try:
+            import tidalapi  # noqa: F401, PLC0415
+        except ImportError:
+            return  # Installed without Tidal support.
         from mopidy._lib import paths  # noqa: PLC0415
 
         data_dir = paths.expand_path(self.config["core"]["data_dir"])
-        tidal = self.config.get("tidal", {})
+        tidal = self.config.get("tidal") or {}
         proxy = self.actor_ref.proxy()
         self.tidal = tidal_auth.TidalAuth(
             Path(data_dir) / "tidal" / "tidal-oauth.json",
@@ -122,10 +131,22 @@ class BallotFrontend(pykka.ThreadingActor, CoreListener):
             tidal.get("client_secret"),
             on_change=lambda: proxy.login_changed(),
         )
+        # Is Mopidy-Tidal running? If not, logging in from the web app saves
+        # a session and restarts Beat Ballot, which then starts it.
+        self.tidal.backend_enabled = "tidal" in schemes
         tidal_auth.ACTIVE = self.tidal
-        self.tidal.start()
+        self.tidal.start(auto_login=self.tidal.backend_enabled)
 
     def login_changed(self) -> None:
+        tidal = self.tidal
+        if (
+            tidal is not None
+            and tidal.state == "logged_in"
+            and not tidal.backend_enabled
+            and not self._restarting
+        ):
+            self._restarting = True  # Once; or the host restarts Mopidy.
+            services.restart_soon("start Tidal")
         if self.parties is not None:
             self.parties.login_changed()
 
@@ -133,7 +154,7 @@ class BallotFrontend(pykka.ThreadingActor, CoreListener):
         if self.agent is not None:
             self.agent.start(self.actor_ref.proxy())
         else:
-            self._start_tidal_login()
+            self._start_services()
             if self.local_player is not None:
                 self.local_player.prepare()
             assert self.parties is not None

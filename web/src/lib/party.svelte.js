@@ -172,13 +172,6 @@ export function leave() {
   saveSession(null)
 }
 
-/** Backend logins waiting for the host (Tidal). Host only. */
-export async function fetchLogins() {
-  const token = encodeURIComponent(party.session?.token ?? '')
-  const res = await fetch(`${BASE}api/logins?token=${token}`)
-  return res.ok ? res.json() : {}
-}
-
 /** The invite: the party link with the guest PIN filled in. Hosts get the
  * guest PIN from the server; guests share the PIN they joined with. */
 export function invite() {

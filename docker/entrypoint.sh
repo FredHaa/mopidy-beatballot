@@ -26,6 +26,18 @@ for b in $(printf '%s' "$backends" | tr ',' ' '); do
                 "(use spotify, tidal and/or soundcloud)" >&2; exit 1 ;;
     esac
 done
+
+# Logins made in the web app (Music services) enable their service too.
+data=/var/lib/mopidy/data
+add_backend() { case ",$backends," in *",$1,"*) ;; *) backends="${backends:+$backends,}$1" ;; esac; }
+if [ "$mode" != player ]; then
+    [ -s "$data/tidal/tidal-oauth.json" ] && add_backend tidal
+    # A token saved from the web app wins over SOUNDCLOUD_AUTH_TOKEN.
+    if [ -s "$data/beatballot/soundcloud-token" ]; then
+        SOUNDCLOUD_AUTH_TOKEN=$(cat "$data/beatballot/soundcloud-token")
+    fi
+    [ -n "${SOUNDCLOUD_AUTH_TOKEN:-}" ] && add_backend soundcloud
+fi
 enabled() { case ",$backends," in *",$1,"*) echo true ;; *) echo false ;; esac; }
 
 if [ "$(enabled spotify)" = true ] && \

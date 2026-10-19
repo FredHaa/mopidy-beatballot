@@ -75,11 +75,22 @@ Choose with `BALLOT_MODE`. The same Docker image does all three.
 
 | Service | Setup | Notes |
 | --- | --- | --- |
-| **Tidal** | Nothing in `.env`. On first start, log in from the host controls (standalone) or the hub page (hub), or with the `link.tidal.com` link in the log | The session is kept in the data folder. `TIDAL_QUALITY` defaults to `LOSSLESS` |
+| **Tidal** | Nothing in `.env`: connect it under **Music services** | The session is kept in the data folder. `TIDAL_QUALITY` defaults to `LOSSLESS` |
 | **Spotify** | `SPOTIFY_CLIENT_ID`/`SECRET` from <https://mopidy.com/ext/spotify/#authentication>. Needs Premium | Standalone only: remote players can't stream Spotify. Use playlists you own (Spotify blocks API access to its editorial playlists). Streaming currently fails for some accounts ([librespot#1649](https://github.com/librespot-org/librespot/issues/1649)) |
-| **SoundCloud** | `SOUNDCLOUD_AUTH_TOKEN` from <https://mopidy.com/ext/soundcloud/#authentication> | Playlists are sets: `https://soundcloud.com/<user>/sets/<name>` |
+| **SoundCloud** | Connect it under **Music services** (or set `SOUNDCLOUD_AUTH_TOKEN`), with a token from <https://mopidy.com/ext/soundcloud/#authentication> | Playlists are sets: `https://soundcloud.com/<user>/sets/<name>` |
 
-Enable them with `MUSIC_BACKENDS`, e.g. `tidal` or `spotify,tidal,soundcloud`.
+**Music services** is in the host controls of a standalone party, and on the hub page
+on a hub. Tidal: press Connect, open the `link.tidal.com` link and log in.
+SoundCloud: get a token on mopidy.com (SoundCloud no longer gives out API keys),
+paste it, and Beat Ballot checks it with SoundCloud. Whoever logs in connects their
+account to the whole party or hub, so only the host (standalone) or hub owner sees
+this. Mopidy only starts music services at startup, so connecting or disconnecting
+one restarts Beat Ballot: the music pauses for a few seconds and everyone
+reconnects by themselves. That needs Docker's restart policy; elsewhere, restart
+Mopidy yourself and turn the service on in `mopidy.conf`.
+
+A service with a saved login is turned on by itself; `MUSIC_BACKENDS` turns on
+others, e.g. `spotify` (the default) or `none`.
 Playlists are share links (or Mopidy URIs) in `BALLOT_PLAYLISTS`, comma-separated, or
 one per line in the host controls. Search covers every enabled service and
 alternates their results; each song shows a small badge for its service.
@@ -131,13 +142,13 @@ PINs, QR code and ballot, and plays on one player. The landing page
 ```sh
 BALLOT_MODE=hub
 BALLOT_HUB_PIN=…                 # the hub owner's PIN
-MUSIC_BACKENDS=tidal             # and/or soundcloud
+MUSIC_BACKENDS=none              # Tidal/SoundCloud: connect them on the hub page
 BALLOT_PUBLIC_URL=https://www.example.party/beatballot/
 BALLOT_TRUSTED_PROXIES=…         # your proxy's IPs, so PIN rate limiting works
 # Optional: BALLOT_PARTY_NAME/BALLOT_ADMIN_PIN (and BALLOT_PIN) create a first party
 ```
 
-Open `https://<hub>/beatballot/#/hub` and log in with the hub PIN to connect Tidal,
+Open `https://<hub>/beatballot/#/hub` and log in with the hub PIN to connect Tidal and SoundCloud,
 create parties (PINs are random unless you choose them; tick "Open party" for no
 guest PIN), pair players, and see each party's player and what's playing. Changing a
 party's PINs signs that party's guests out. Only expose `/` and `/beatballot` through
@@ -227,7 +238,7 @@ variable instead.
 | `party_name` | `BALLOT_PARTY_NAME` | `Beat Ballot` | Standalone: the party's name. Hub: the first party's name |
 | `pin` | `BALLOT_PIN` | `1234` (Docker: none) | Guest PIN. Empty: an open party, a name is enough |
 | `admin_pin` | `BALLOT_ADMIN_PIN` | | Host PIN; empty disables host controls |
-| `hub_pin` | `BALLOT_HUB_PIN` | | Hub: the owner's PIN (parties, players, Tidal) |
+| `hub_pin` | `BALLOT_HUB_PIN` | | Hub: the owner's PIN (parties, players, music services) |
 | `hub_url` | `BALLOT_HUB_URL` | | Player: the hub's address |
 | `pair_code` | `BALLOT_PAIR_CODE` | | Player: one-time code from the hub page |
 | `player_name` | `BALLOT_PLAYER_NAME` | hostname | Player: name shown on the hub |
@@ -247,7 +258,7 @@ variable instead.
 | `trusted_proxies` | `BALLOT_TRUSTED_PROXIES` | | Reverse proxy IPs/CIDRs whose `X-Forwarded-For` is trusted, for per-guest PIN rate limiting |
 
 Docker-only variables: `MUSIC_BACKENDS` (`spotify`, `tidal`, `soundcloud`,
-comma-separated, or `none`), `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`,
+comma-separated, or `none`; services connected in the web app are added), `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`,
 `SPOTIFY_BITRATE`, `TIDAL_QUALITY`, `SOUNDCLOUD_AUTH_TOKEN`, `AUDIO_OUTPUT`,
 `MIXER_VOLUME` and `MOPIDY_VERBOSITY`. See `.env.example`.
 
@@ -283,6 +294,7 @@ src/mopidy_beatballot/
   rooms.py       parties, PINs, player pairing codes and tokens
   backends.py    service names and playlist share links
   tidal_auth.py  Tidal device login without blocking Mopidy; fast Tidal search
+  services.py    SoundCloud token from the web app; restarting to load services
   player.py      adapter from Mopidy core to the small Player protocol
   remote.py      hub side of a remote player; resolves songs to stream URLs
   agent.py       player mode: connects to the hub and plays what it sends

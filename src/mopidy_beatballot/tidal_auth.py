@@ -53,7 +53,11 @@ class TidalAuth:
         self._on_change = on_change
         self._lock = threading.Lock()
         self._stopped = threading.Event()
-        self.state = "checking"  # checking | logged_in | pending | error
+        # checking | logged_in | pending | error | disconnected
+        self.state = "checking"
+        self.account: str | None = None  # Who's logged in, for the web app.
+        self.backend_enabled = True  # Is Mopidy-Tidal running?
+        self._generation = 0  # Bumped by connect/disconnect to cancel a login.
         self.session: Any = None  # The logged-in session, reused for search.
         self._search_lock = threading.Lock()
         self.url: str | None = None
@@ -69,6 +73,7 @@ class TidalAuth:
         with self._lock:
             return {
                 "state": self.state,
+                "account": self.account,
                 "url": self.url,
                 "code": self.code,
                 "expires_in": (
@@ -78,8 +83,35 @@ class TidalAuth:
                 ),
             }
 
-    def start(self) -> None:
-        threading.Thread(target=self._run, name="TidalAuth", daemon=True).start()
+    def start(self, auto_login: bool = True) -> None:
+        """Load the saved session. Without one, start the device login right
+        away (``auto_login``, when the Tidal backend is running) or wait for
+        ``connect``."""
+        threading.Thread(
+            target=self._run, args=(auto_login,), name="TidalAuth", daemon=True
+        ).start()
+
+    def connect(self) -> None:
+        """Start the device login (from the web app)."""
+        with self._lock:
+            if self.state in ("logged_in", "pending", "checking"):
+                return
+            self._generation += 1
+            generation = self._generation
+            self.state = "checking"  # Until Tidal hands out the link.
+        self._on_change()
+        threading.Thread(
+            target=self._login, args=(generation,), name="TidalLogin", daemon=True
+        ).start()
+
+    def disconnect(self) -> None:
+        """Forget the Tidal login (and cancel one in progress)."""
+        with self._lock:
+            self._generation += 1
+        self.session_file.unlink(missing_ok=True)
+        self.session = None
+        self.account = None
+        self._set("disconnected")
 
     def stop(self) -> None:
         self._stopped.set()
@@ -126,7 +158,15 @@ class TidalAuth:
             self.expires_at = fields.get("expires_at")
         self._on_change()
 
-    def _run(self) -> None:
+    def _logged_in(self, session: Any) -> None:
+        self.session = session
+        user = getattr(session, "user", None)
+        self.account = (
+            getattr(user, "username", None) or getattr(user, "email", None) or None
+        )
+        self._set("logged_in")
+
+    def _run(self, auto_login: bool) -> None:
         try:
             session = self._new_session()
             if (
@@ -134,12 +174,20 @@ class TidalAuth:
                 and session.check_login()
             ):
                 logger.info("Beat Ballot: Tidal session is valid")
-                self.session = session
-                self._set("logged_in")
+                self._logged_in(session)
                 return
         except Exception:
             logger.exception("Beat Ballot: checking the Tidal session failed")
-        while not self._stopped.is_set():
+        if not auto_login:
+            self._set("disconnected")
+            return
+        with self._lock:
+            self._generation += 1
+            generation = self._generation
+        self._login(generation)
+
+    def _login(self, generation: int) -> None:
+        while not self._stopped.is_set() and generation == self._generation:
             try:
                 session = self._new_session()
                 link, future = session.login_oauth()
@@ -153,11 +201,12 @@ class TidalAuth:
                     expires_at=time.time() + link.expires_in,
                 )
                 future.result()  # Raises TimeoutError when the link expires.
+                if generation != self._generation:
+                    return  # Disconnected meanwhile: don't save this login.
                 self.session_file.parent.mkdir(parents=True, exist_ok=True)
                 session.save_session_to_file(self.session_file)
                 logger.info("Beat Ballot: Tidal login OK")
-                self.session = session
-                self._set("logged_in")
+                self._logged_in(session)
                 return
             except TimeoutError:
                 logger.info("Beat Ballot: Tidal login link expired, making a new one")

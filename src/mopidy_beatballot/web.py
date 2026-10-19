@@ -21,7 +21,7 @@ import tornado.web
 import tornado.websocket
 from tornado.ioloop import IOLoop
 
-from . import rooms, tidal_auth
+from . import rooms, services, tidal_auth
 from .hub import HUB, Hub
 from .rooms import Room, RoomError, RoomStore
 from .settings import Settings
@@ -244,6 +244,11 @@ class Context:
         self._store = store
         self.failed = FailedJoins()
         self.player_sockets: dict[str, PlayerSocketHandler] = {}
+        # Swappable in tests: restarting Mopidy, and asking SoundCloud.
+        self.restart = services.restart_soon
+        self.soundcloud_username = services.soundcloud_username
+        self.restarting = False
+        self.restart_needed = False  # Can't restart itself: the host must.
 
     @property
     def store(self) -> RoomStore:
@@ -379,12 +384,19 @@ class JoinHandler(BaseHandler):
         )
 
 
-class LoginsHandler(BaseHandler):
-    """Backend logins waiting (Tidal). Whoever opens the link connects their
-    account, so only the hub owner sees it (or the host, when standalone)."""
+class ServicesHandler(BaseHandler):
+    """Music service logins (Tidal, SoundCloud) for the web app.
 
-    def get(self) -> None:
-        found = self.ctx.verify(self.get_argument("token", ""))
+    Whoever logs in connects their account to everything, so only the hub
+    owner may (or the host, when standalone). Connecting a service that isn't
+    running, or disconnecting one, restarts Beat Ballot: Mopidy only starts
+    music backends at startup.
+    """
+
+    def prepare(self) -> None:
+        header = self.request.headers.get("Authorization", "")
+        token = header.removeprefix("Bearer ").strip() or self.get_argument("token", "")
+        found = self.ctx.verify(token)
         owner = found is not None and found[0] == HUB_ROOM
         standalone_host = (
             found is not None
@@ -392,9 +404,56 @@ class LoginsHandler(BaseHandler):
             and self.ctx.settings.mode == "standalone"
         )
         if not (owner or standalone_host):
-            return self.write_json({"error": "Hub owner only"}, 403)
+            raise tornado.web.HTTPError(403, "Only the hub owner can do this")
+
+    def status(self) -> dict[str, Any]:
         tidal = tidal_auth.ACTIVE
-        self.write_json({"tidal": tidal.status() if tidal else None})
+        soundcloud = services.SOUNDCLOUD
+        return {
+            "tidal": (
+                {**tidal.status(), "enabled": tidal.backend_enabled} if tidal else None
+            ),
+            "soundcloud": soundcloud.status() if soundcloud else None,
+            "restarting": self.ctx.restarting,
+            "restart_needed": self.ctx.restart_needed,
+            "can_restart": services.CAN_RESTART,
+        }
+
+    def get(self, service: str | None = None, action: str | None = None) -> None:
+        self.write_json(self.status())
+
+    async def post(self, service: str, action: str) -> None:
+        restart = False
+        if service == "tidal":
+            tidal = tidal_auth.ACTIVE
+            if tidal is None:
+                raise tornado.web.HTTPError(400, "Tidal support isn't installed")
+            if action == "connect":
+                tidal.connect()  # Restarts by itself once logged in, if needed.
+            else:
+                tidal.disconnect()
+                restart = tidal.backend_enabled
+        else:
+            soundcloud = services.SOUNDCLOUD
+            if soundcloud is None:
+                raise tornado.web.HTTPError(503, "Beat Ballot is starting up")
+            try:
+                if action == "connect":
+                    token = str(self.body().get("token", "")).strip()
+                    if not token:
+                        raise services.ServiceError("Paste the token from mopidy.com")
+                    username = await IOLoop.current().run_in_executor(
+                        None, self.ctx.soundcloud_username, token
+                    )
+                    restart = soundcloud.save(token, username)
+                else:
+                    restart = soundcloud.disconnect()
+            except services.ServiceError as e:
+                raise tornado.web.HTTPError(400, str(e)) from e
+        if restart and not self.ctx.restarting:
+            self.ctx.restarting = self.ctx.restart(f"{action} {service}")
+            self.ctx.restart_needed = not self.ctx.restarting
+        self.write_json(self.status())
 
 
 class HealthHandler(BaseHandler):
@@ -801,7 +860,8 @@ def routes(ctx: Context) -> list[tuple[Any, ...]]:
         (rf"/api/rooms/{slug}/info", RoomInfoHandler, c),
         (rf"/api/rooms/{slug}/join", JoinHandler, c),
         (r"/api/health", HealthHandler, c),
-        (r"/api/logins", LoginsHandler, c),
+        (r"/api/services", ServicesHandler, c),
+        (r"/api/services/(tidal|soundcloud)/(connect|disconnect)", ServicesHandler, c),
         (r"/api/hub/login", HubLoginHandler, c),
         (r"/api/hub/rooms", HubRoomsHandler, c),
         (rf"/api/hub/rooms/{room_id}", HubRoomHandler, c),

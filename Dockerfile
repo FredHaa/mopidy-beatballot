@@ -55,7 +55,8 @@ COPY docker/entrypoint.sh /entrypoint.sh
 
 ENV PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
-    XDG_RUNTIME_DIR=/tmp
+    XDG_RUNTIME_DIR=/tmp \
+    BALLOT_SELF_RESTART=1
 USER mopidy
 WORKDIR /var/lib/mopidy
 VOLUME /var/lib/mopidy

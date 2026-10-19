@@ -1,5 +1,7 @@
 import json
 import random
+import tempfile
+from pathlib import Path
 
 import tornado.gen
 import tornado.web
@@ -7,6 +9,7 @@ import tornado.websocket
 from tornado.httpclient import HTTPRequest
 from tornado.testing import AsyncHTTPTestCase, gen_test
 
+from mopidy_beatballot import services, tidal_auth
 from mopidy_beatballot.hub import Hub
 from mopidy_beatballot.parties import Parties
 from mopidy_beatballot.rooms import Room, RoomStore
@@ -113,7 +116,26 @@ class WebTest(AsyncHTTPTestCase):
         self.ctx = Context(
             self.auth, FakeApi(self.front), self.settings, self.hub, self.store
         )
+        # Music services: no restarts, no SoundCloud requests.
+        self.restarts = []
+        self.ctx.restart = lambda reason: self.restarts.append(reason) or True
+        self.ctx.soundcloud_username = self.soundcloud_username
+        self.data_dir = Path(tempfile.mkdtemp())
+        self.soundcloud = services.SoundCloudAccount(self.data_dir, None, False)
+        services.SOUNDCLOUD = self.soundcloud
+        tidal_auth.ACTIVE = None
         return tornado.web.Application(routes(self.ctx))
+
+    def tearDown(self):
+        services.SOUNDCLOUD = None
+        tidal_auth.ACTIVE = None
+        super().tearDown()
+
+    @staticmethod
+    def soundcloud_username(token):
+        if token != "good":
+            raise services.ServiceError("SoundCloud didn't accept that token")
+        return "dj-ann"
 
     # helpers
 
@@ -226,6 +248,92 @@ class WebTest(AsyncHTTPTestCase):
     def test_owner_login(self):
         assert self.post("/api/hub/login", {"pin": "1"}).code == 403
         assert self.owner()
+
+    # music services
+
+    def services(self, path="", body=None, token=None):
+        headers = {"Authorization": f"Bearer {token or self.owner()}"}
+        if body is None:
+            res = self.fetch(f"/api/services{path}", headers=headers)
+        else:
+            res = self.fetch(
+                f"/api/services{path}",
+                method="POST",
+                body=json.dumps(body),
+                headers=headers,
+            )
+        return res.code, json.loads(res.body)
+
+    def test_services_are_for_the_owner(self):
+        host = json.loads(self.join(pin="9999").body)["token"]
+        if self.mode == "hub":
+            assert self.services(token=host)[0] == 403
+        assert self.fetch("/api/services").code == 403
+        code, data = self.services()
+        assert code == 200
+        assert data["tidal"] is None
+        assert data["soundcloud"]["connected"] is False
+        assert data["restarting"] is False
+        assert data["restart_needed"] is False
+
+    def test_soundcloud_connect_checks_token_and_restarts(self):
+        code, data = self.services("/soundcloud/connect", {"token": "bad"})
+        assert (code, data["error"]) == (400, "SoundCloud didn't accept that token")
+        assert self.services("/soundcloud/connect", {"token": " "})[0] == 400
+        assert self.restarts == []
+
+        code, data = self.services("/soundcloud/connect", {"token": "good"})
+        assert code == 200
+        assert data["soundcloud"]["account"] == "dj-ann"
+        assert data["soundcloud"]["source"] == "web"
+        assert data["restarting"] is True
+        assert self.restarts == ["connect soundcloud"]
+        token_file = self.data_dir / services.SOUNDCLOUD_TOKEN_FILE
+        assert token_file.read_text() == "good"
+        assert token_file.stat().st_mode & 0o777 == 0o600
+
+    def test_soundcloud_disconnect(self):
+        self.soundcloud.save("good", "dj-ann")
+        self.soundcloud.enabled = True
+        code, data = self.services("/soundcloud/disconnect", {})
+        assert code == 200
+        assert data["soundcloud"]["connected"] is False
+        assert self.restarts == ["disconnect soundcloud"]
+
+    def test_without_self_restart_the_host_restarts(self):
+        self.ctx.restart = lambda reason: False
+        code, data = self.services("/soundcloud/connect", {"token": "good"})
+        assert (data["restarting"], data["restart_needed"]) == (False, True)
+
+    def test_soundcloud_token_from_config_cant_be_disconnected(self):
+        services.SOUNDCLOUD = services.SoundCloudAccount(self.data_dir, "cfg", True)
+        code, data = self.services()
+        assert data["soundcloud"]["source"] == "config"
+        code, data = self.services("/soundcloud/disconnect", {})
+        assert code == 400
+        assert "SOUNDCLOUD_AUTH_TOKEN" in data["error"]
+
+    def test_tidal_connect_and_disconnect(self):
+        class Tidal:
+            backend_enabled = True
+            calls = []
+
+            def status(self):
+                return {"state": "disconnected"}
+
+            def connect(self):
+                self.calls.append("connect")
+
+            def disconnect(self):
+                self.calls.append("disconnect")
+
+        tidal_auth.ACTIVE = tidal = Tidal()
+        code, data = self.services("/tidal/connect", {})
+        assert data["tidal"] == {"state": "disconnected", "enabled": True}
+        assert self.restarts == []
+        self.services("/tidal/disconnect", {})
+        assert tidal.calls == ["connect", "disconnect"]
+        assert self.restarts == ["disconnect tidal"]
 
     def test_owner_endpoints_need_owner_token(self):
         guest = json.loads(self.join(pin="9999").body)["token"]
@@ -464,12 +572,13 @@ class StandaloneWebTest(WebTest):
         auth = {"Authorization": f"Bearer {self.owner()}"}
         assert self.fetch("/api/hub/rooms", headers=auth).code == 404
 
-    def test_logins_for_standalone_host(self):
+    def test_services_for_standalone_host(self):
         guest = json.loads(self.join().body)["token"]
         host = json.loads(self.join(pin="9999").body)["token"]
-        assert self.fetch(f"/api/logins?token={guest}").code == 403
-        res = self.fetch(f"/api/logins?token={host}")
-        assert json.loads(res.body) == {"tidal": None}
+        auth = {"Authorization": f"Bearer {host}"}
+        assert self.fetch(f"/api/services?token={guest}").code == 403
+        res = self.fetch("/api/services", headers=auth)
+        assert json.loads(res.body)["soundcloud"]["connected"] is False
 
 
 # WebTest is a base class; only its subclasses run.
@@ -498,7 +607,7 @@ def test_make_app_builds_routes(tmp_path, monkeypatch):
     }
     built = web.make_app(config, core=object())
     ctx = built[0][2]["ctx"]
-    assert {r[0] for r in built} >= {"/api/mode", "/ws", "/player/ws", "/api/logins"}
+    assert {r[0] for r in built} >= {"/api/mode", "/ws", "/player/ws", "/api/services"}
     assert (tmp_path / "beatballot" / "secret").exists()
 
     class Pending:
